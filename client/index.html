@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>פרוטוקול.ai</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- === THIS IS THE CRUCIAL FIX === -->
+    <!-- 1. Core App SDK (Required) -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <!-- 2. Auth SDK (Required by firebase-init.js) -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+    <!-- 3. Firestore SDK (Required for database operations) -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+	<!-- 4. NEW: Storage SDK (for file uploads) -->
+	<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-storage.js"></script>
+	<!-- 5. NEW: Functions SDK -->
+	<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-functions.js"></script>
+    <!-- 6. Your project's configuration -->
+    <script src="firebase-init.js"></script>
+	<!-- 7. SortableJS library for the drag-and-drop functionality -->
+	<script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+    <!-- ============================== -->
+</head>
+<body>
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+    <header class="top-header">
+        <h1 class="app-title">פרוטוקול.ai</h1>
+        <img src="logo-small.png" alt="לוגו פרוטוקול" class="top-logo">
+        <button class="menu-toggle-btn" id="menu-toggle">
+            <i class="fa-solid fa-bars"></i>
+        </button>
+    </header>
+
+    <div class="app-wrapper">
+        <nav class="sidebar" id="sidebar">
+            <button class="close-menu-btn" id="close-menu">
+                <i class="fa-solid fa-times"></i>
+            </button>
+            <ul id="sidebar-menu">
+                <li id="protocol-menu-item" class="active has-submenu">
+        <a href="#" class="submenu-toggle">
+            <i class="fa-solid fa-comments"></i> 
+            <span>צאט עם פרוטוקול</span>
+            <i class="fa-solid fa-chevron-down submenu-arrow"></i>
+        </a>
+        <ul class="submenu" id="protocol-submenu">
+            <!-- Dynamic categories will be inserted here by JavaScript -->
+        </ul>
+    </li>
+
+    <!-- The "Taknon" item remains as it was -->
+    <li data-chat-type="taknon">
+        <a href="#"><i class="fa-solid fa-gavel"></i> צאט עם התקנון</a>
+    </li>
+
+    <!-- Admin items remain as they were -->
+    <li id="menu-files" class="admin-only" style="display: none;">
+        <a href="#"><i class="fa-solid fa-upload"></i> העלאת קבצים</a>
+    </li>
+    <li id="menu-settings" class="admin-only" style="display: none;">
+        <a href="#"><i class="fa-solid fa-cog"></i> הגדרות</a>
+    </li>
+            </ul>
+        </nav>
+
+        <!-- NEW: A single container for all pages -->
+        <div class="page-content-container">
+            
+            <!-- PAGE 1: The Chat Interface -->
+            <main class="main-content" id="chat-page" style="display: flex;">
+                <div class="loading-overlay" id="loading-overlay">
+                    <div class="chat-spinner"></div>
+                </div>
+                <div class="chat-window" id="chat-window">
+                    <div class="chat-title-wrapper">
+                        <h3 id="chat-title">צאט עם פרוטוקול</h3>
+                    </div>
+                    <div class="messages-container" id="messages-container"></div>
+                </div>
+                <button id="scroll-to-bottom-btn" class="scroll-to-bottom-btn" title="גלול לתשובה האחרונה">
+                    <i class="fa-solid fa-arrow-down"></i>
+                </button>
+                <div class="chat-input-area">
+                    <form id="chat-form" class="chat-form">
+                        <button type="button" id="copy-history-btn" class="icon-btn" title="העתק את כל השיחה">
+                            <i class="fa-solid fa-copy"></i>
+                        </button>
+                        <textarea id="user-input" placeholder="כתוב שאלה כאן..." rows="1"></textarea>
+                        <button type="submit" id="send-btn" class="send-btn" title="שלח">
+                            <i class="fa-solid fa-arrow-up"></i>
+                        </button>
+                    </form>
+                </div>
+            </main>
+
+            <!-- PAGE 2: The Settings Interface -->
+            <div id="settings-page" class="page-container" style="display: none;">
+                <h2>הגדרות</h2>
+                <div class="tabs">
+                    <button class="tab-link active" data-tab="users-tab">משתמשים</button>
+                    <button class="tab-link" data-tab="categories-tab">קטגוריות</button>
+                </div>
+                <div id="users-tab" class="tab-content active">
+                    <h3>ניהול משתמשים</h3>
+                    <p>כאן יוצגו פרטי המשתמשים במערכת...</p>
+                </div>
+                <div id="categories-tab" class="tab-content">
+                    <h3>ניהול קטגוריות</h3>
+                    <div class="form-group">
+                        <label for="new-category-name">שם קטגוריה חדשה</label>
+                        <div class="input-with-button">
+                            <input type="text" id="new-category-name" placeholder="לדוגמה: ועדת כספים">
+                            <button id="add-category-btn" class="auth-btn">הוסף</button>
+                        </div>
+                    </div>
+                    <h4>רשימת קטגוריות קיימות:</h4>
+                    <ul id="categories-list" class="item-list">
+                        <!-- Categories will be loaded here by JavaScript -->
+                    </ul>
+					<button id="save-order-btn" class="auth-btn" style="margin-top: 20px;">שמור סדר</button>
+                </div>
+            </div>
+
+			<div id="empty-state-container" class="page-container" style="display: none;"> <!-- NOTE: Added 'page-container' class -->
+				<div id="empty-state-admin" class="empty-state-message">
+					<p>טרם הוגדרו קטגוריות פרוטוקולים</p>
+					<a href="#" id="empty-state-link">לחץ כאן למעבר להגדרות</a>
+				</div>
+				<div id="empty-state-user" class="empty-state-message">
+					<p>פנה למנהל המערכת על מנת שיוסיף קטגוריות פרוטוקולים</p>
+				</div>
+			</div>
+
+			<div id="file-upload-page" class="page-container" style="display: none;">
+				<h2>העלאת קבצים</h2>
+
+				<div class="upload-layout">
+					
+					<!-- Left Panel: List of existing files -->
+					<div class="file-list-panel">
+						<div class="panel-header">
+							<h4>קבצים קיימים בקטגוריה</h4>
+							<button id="delete-files-btn-top" class="auth-btn delete-action-btn" style="display: none;">
+								<i class="fa-solid fa-trash-alt"></i> מחק נבחרים
+							</button>
+						</div>
+
+						<div id="existing-files-table-container">
+							<table id="existing-files-table">
+								<thead>
+									<tr>
+										<th class="col-check"><input type="checkbox" id="select-all-checkbox" title="בחר הכל"></th>
+										<th class="col-name">שם קובץ</th>
+										<th class="col-date">תאריך העלאה</th>
+										<th class="col-status">סטטוס</th>
+									</tr>
+								</thead>
+								<tbody id="existing-files-list">
+									<!-- JavaScript will populate this with file rows (<tr>) -->
+									<tr><td colspan="4" style="text-align: center; padding: 20px;">בחר קטגוריה להצגת קבצים...</td></tr>
+								</tbody>
+							</table>
+						</div>
+						
+						<div class="panel-footer">
+							<button id="delete-files-btn-bottom" class="auth-btn delete-action-btn" style="display: none;">
+								<i class="fa-solid fa-trash-alt"></i> מחק קבצים נבחרים
+							</button>
+						</div>
+
+					</div>
+
+					<!-- Right Panel: Upload workspace -->
+					<div class="upload-workspace-panel">
+						<h4>העלאה לקטגוריה</h4>
+						<div class="form-group">
+							<label for="upload-category-select">בחר קטגוריה</label>
+							<select id="upload-category-select">
+								<option value="" disabled selected>-- בחר קטגוריה --</option>
+								<!-- Categories will be loaded here -->
+							</select>
+						</div>
+
+						<!-- This area will appear after a category is chosen -->
+						<div id="upload-action-area" style="display: none;">
+							<button id="upload-files-btn" class="auth-btn">
+								<i class="fa-solid fa-cloud-arrow-up"></i> בחר קבצים להעלאה
+							</button>
+							<button id="delete-files-btn" class="auth-btn delete-action-btn" style="display: none; margin-top: 15px;">
+								<i class="fa-solid fa-trash-alt"></i> מחק קבצים נבחרים
+							</button>
+							<div id="upload-progress-container">
+								<!-- Progress for individual file uploads will appear here -->
+							</div>
+						</div>
+					</div>
+
+				</div>
+			</div>
+        </div> <!-- End of page-content-container -->
+
+    </div> <!-- End of app-wrapper -->
+
+    <!-- Main App Logic -->
+    <script src="script.js"></script>
+
+</body>
+</html>
