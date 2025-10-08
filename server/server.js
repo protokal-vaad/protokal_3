@@ -29,12 +29,11 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const pinecone = new Pinecone({ apiKey: process.env.PINECONE_API_KEY, });
 const pineconeIndex = pinecone.Index("protokal-ai"); // Use your index name
 
-
-// --- THIS IS THE MODIFIED CHAT ENDPOINT ---
+// --- FINAL, ADVANCED "QUERY EXPANSION" CHAT ENDPOINT ---
 app.post('/api/chat-stream', async (req, res) => {
     const { message, chatType, history } = req.body;
 
-    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Content-Type', 'text-event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
     res.flushHeaders(); 
@@ -42,54 +41,67 @@ app.post('/api/chat-stream', async (req, res) => {
     try {
         console.log(`\n--- RAG Request (Category: ${chatType}): "${message}" ---`);
         
-        // FIX #1: Correctly build the conversation for search without duplicating the last message.
-        const conversationForSearch = history.map(h => `${h.sender === 'user' ? 'User' : 'Assistant'}: ${h.text}`).join('\n');
-        const searchQuery = `${conversationForSearch}\nUser: ${message}`;
-        console.log(`Step 1: Using combined search query: "${searchQuery.substring(0, 150)}..."`);
+        // --- STEP 1: QUERY EXPANSION ---
+        // Ask a fast LLM to generate multiple, related search queries.
+        console.log("Step 1a: Generating expanded search queries...");
+        const expansionMessages = [
+            { role: 'system', content: 'You are a helpful search assistant. Based on the user\'s question and conversation history, generate a short list of 3-4 diverse, related search queries that would help find the answer in a database of official protocols. The queries should be in Hebrew. Respond ONLY with the queries, separated by newlines.'},
+            { role: 'user', content: `Conversation History:\n${(history || []).map(h => `${h.sender}: ${h.text}`).join('\n')}\n\nOriginal Question: "${message}"` }
+        ];
+        const expansionResponse = await openai.chat.completions.create({
+            model: 'gpt-3.5-turbo', 
+            messages: expansionMessages, 
+            max_tokens: 200, 
+            temperature: 0.3
+        });
+        const expandedQueries = expansionResponse.choices[0].message.content;
         
+        // Combine the original question with the new ones for a powerful search input
+        const searchInput = `${message}\n${expandedQueries}`;
+        console.log(`Step 1b: Expanded search input for embedding: "${searchInput.replace(/\n/g, ' | ')}"`);
+
+        // --- STEP 2: EMBED THE EXPANDED QUERY ---
+        console.log("Step 2: Creating embedding for the expanded query...");
         const embeddingResponse = await openai.embeddings.create({
-            model: "text-embedding-3-small",
-            input: searchQuery,
+            model: "text-embedding-3-small", 
+            input: searchInput,
         });
         const questionVector = embeddingResponse.data[0].embedding;
 
-        console.log("Step 2: Querying Pinecone for relevant context...");
-        
-        // --- FIX #2: THIS IS THE CRITICAL MISSING 'await' ---
+        // --- STEP 3: QUERY PINECONE ---
+        console.log("Step 3: Querying Pinecone with the expanded vector...");
         const queryResponse = await pineconeIndex.query({
-            topK: 10,
+            topK: 7, // Get a healthy number of results
             vector: questionVector,
             filter: { "categoryId": { "$eq": chatType } },
-			includeValues: true,
+			includeValues: true, 
             includeMetadata: true,
         });
-        // --- END OF FIX ---
-		
-        const RELEVANCE_THRESHOLD = 0.35;
+        
+        // --- STEP 4: CONSTRUCT CONTEXT (No threshold) ---
+        // We will pass more context and trust the powerful final LLM to be the "reranker"
         const context = queryResponse.matches
-			.filter(match => match.score >= RELEVANCE_THRESHOLD)
-			.map(match => match.metadata.text)
+			.map(match => match.metadata?.text)
+            .filter(text => text)
 			.join("\n\n---\n\n");
         
-		console.log(`Step 3: Constructed context from ${queryResponse.matches.filter(m => m.score >= RELEVANCE_THRESHOLD).length} valid matches.`);
+		console.log(`Step 4: Constructed context from ${queryResponse.matches.length} matches.`);
 
-        const systemPrompt = "You are Proto-Kal, an expert AI assistant... (your prompt)"; // Keep your full prompt
+        // --- STEP 5: GENERATE FINAL ANSWER ---
+        const systemPrompt = "You are an AI assistant named Proto-Kal. Your task is to answer the user's question with extreme precision, based ONLY on the provided Context from official documents. The Conversation History is provided for context about follow-up questions. If the answer is not present in the Context, you MUST respond with the Hebrew phrase 'לא מצאתי תשובה לכך במסמכים שסופקו.' and nothing else.";
         
-        const historyForPrompt = history.map(h => ({
-            role: h.sender === 'user' ? 'user' : 'assistant',
-            content: h.text
-        }));
+        const historyForPrompt = (history || []).map(h => ({ role: h.sender === 'user' ? 'user' : 'assistant', content: h.text }));
 
-        const messages = [
+        const finalMessages = [
             { role: 'system', content: systemPrompt },
             ...historyForPrompt,
-            { role: 'user', content: `Context:\n${context}\n\nQuestion: ${message}` }
+            { role: 'user', content: `Here is the relevant context from the documents:\n\n--- CONTEXT START ---\n${context}\n--- CONTEXT END ---\n\nBased on the context above, please answer this question: "${message}"` }
         ];
-        
-        console.log("Step 4: Streaming the final answer from OpenAI...");
+
+        console.log("Step 5: Streaming the final answer from OpenAI...");
         const stream = await openai.chat.completions.create({
             model: 'gpt-4o',
-            messages: messages,
+            messages: finalMessages,
             stream: true,
         });
 

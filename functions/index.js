@@ -83,24 +83,43 @@ async function parseFileContentFromPath(contentType, tempFilePath) {
 };
 
 // Splits text into chunks
-function chunkText(text, chunkSize = 1500, overlap = 200) {
-    // 1. Pre-process the text to normalize all forms of newlines and multiple spaces.
-    // This creates a clean, single string of content.
-    const processedText = text.replace(/(\r\n|\r|\n)/g, " ").replace(/\s\s+/g, ' ').trim();
-    
-    const chunks = [];
-    if (processedText.length === 0) {
-        return chunks;
+function chunkText(text, targetChunkSize = 1500) {
+    // 1. Normalize line endings and split into paragraphs based on double newlines.
+    const paragraphs = text.replace(/(\r\n|\r)/g, '\n').split(/[\n]{2,}/).map(p => p.trim()).filter(p => p.length > 20);
+
+    if (paragraphs.length === 0) {
+        console.warn("No paragraph breaks found. Falling back to simple sliding window on raw text.");
+        const chunks = [];
+        for (let i = 0; i < text.length; i += (targetChunkSize - 200)) { // 200 is overlap
+            chunks.push(text.substring(i, i + targetChunkSize));
+        }
+        return chunks.filter(c => c.length > 20);
     }
 
-    // 2. Create overlapping chunks using a sliding window.
-    for (let i = 0; i < processedText.length; i += (chunkSize - overlap)) {
-        const chunk = processedText.substring(i, i + chunkSize);
-        chunks.push(chunk);
+    // 2. Intelligently group paragraphs into meaningful chunks.
+    const chunks = [];
+    let currentChunk = "";
+    for (const p of paragraphs) {
+        const isHeading = /^\d+(\.\d+)*\s/.test(p);
+        if (currentChunk && isHeading) {
+            chunks.push(currentChunk);
+            currentChunk = "";
+        }
+        if ((currentChunk + "\n\n" + p).length <= targetChunkSize) {
+            currentChunk += (currentChunk ? "\n\n" : "") + p;
+        } else {
+            if (currentChunk) {
+                chunks.push(currentChunk);
+            }
+            currentChunk = p;
+        }
     }
-    
-    console.log(`Text processed. Final chunk count: ${chunks.length}`);
-    return chunks.filter(c => c.length > 20); // Ensure no tiny chunks are left
+    if (currentChunk) {
+        chunks.push(currentChunk);
+    }
+
+    console.log(`Text processed. Paragraphs found: ${paragraphs.length}, Chunks created: ${chunks.length}`);
+    return chunks;
 }
 
 // Global variables for clients to reuse across function invocations
