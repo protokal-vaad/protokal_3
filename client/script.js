@@ -50,7 +50,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const logDateStart = document.getElementById('log-date-start');
     const logDateEnd = document.getElementById('log-date-end');
     const applyFiltersBtn = document.getElementById('apply-filters-btn');
-
+    const copyHistoryBtn = document.getElementById('copy-history-btn');
     
     // --- PART 3: FIREBASE REFERENCES ---
     const categoriesCollection = db.collection("categories");
@@ -236,9 +236,6 @@ document.addEventListener('DOMContentLoaded', () => {
 		// Control Taknon visibility with the feature flag
 		taknonMenuItem.style.display = appSettings.isTaknonChatEnabled ? 'list-item' : 'none';
 	}
-// in script.js, PART 5
-// Replace your existing populateCategoryDropdown with this DEBUG version
-
 	async function populateCategoryDropdown() {
 		const uploadCategorySelect = document.getElementById('upload-category-select');
 		if (!uploadCategorySelect) {
@@ -965,7 +962,6 @@ document.addEventListener('DOMContentLoaded', () => {
             closeModal();
         }
     });
-	// in client/script.js, PART 6 (or wherever you defined it)
 	async function handleFileDeletion() {
 		const checkedBoxes = existingFilesList.querySelectorAll('.file-checkbox:checked');
 		if (checkedBoxes.length === 0) return;
@@ -1101,6 +1097,63 @@ document.addEventListener('DOMContentLoaded', () => {
 	}
 	deleteFilesBtnTop.addEventListener('click', handleFileDeletion);
 	deleteFilesBtnBottom.addEventListener('click', handleFileDeletion);
+    // Listener for the "Copy Entire Chat History" button
+    if (copyHistoryBtn) {
+        copyHistoryBtn.addEventListener('click', async () => {
+            console.log("Copy History button clicked!");
+            try {
+                let fullChatText = "פרוטוקול.ai - היסטוריית שיחה\n";
+                fullChatText += `תאריך: ${new Date().toLocaleDateString('he-IL')}\n\n`; // Add current date for context
+
+                if (window.chatHistory && window.chatHistory.length > 0) {
+                    window.chatHistory.forEach(msg => {
+                        const speakerLabel = msg.sender === 'user' ? 'משתמש' : 'פרוטוקול.ai';
+                        fullChatText += `[${speakerLabel}]\n${msg.text}\n`; // Clearly label speaker
+
+                        if (msg.sources && msg.sources.length > 0) {
+                            fullChatText += `  (מקורות: ${msg.sources.join(', ')})\n`;
+                        }
+                        fullChatText += '\n'; // Extra newline for spacing between messages
+                    });
+                } else {
+                    // Fallback: If chatHistory is not reliable or accessible, scrape from the UI
+                    console.warn("chatHistory not found or empty, falling back to scraping UI.");
+                    const messagesContainer = document.getElementById('messages-container');
+                    if (messagesContainer) {
+                        Array.from(messagesContainer.children).forEach(messageDiv => {
+                            // Identify sender from class names
+                            const speakerLabel = messageDiv.classList.contains('user-message-wrapper') ? 'משתמש' : 'פרוטוקול.ai';
+                            const textElement = messageDiv.querySelector('.message p');
+                            const sourcesElement = messageDiv.querySelector('.sources-info');
+
+                            if (textElement) {
+                                fullChatText += `[${speakerLabel}]: ${textElement.innerText.trim()}\n`;
+                            }
+                            if (sourcesElement) {
+                                fullChatText += `  (${sourcesElement.innerText.trim()})\n`;
+                            }
+                            fullChatText += '\n';
+                        });
+                    }
+                }
+
+                // Copy to clipboard
+                await navigator.clipboard.writeText(fullChatText);
+                console.log('Full chat history copied to clipboard!');
+
+                // Provide visual feedback
+                const originalIcon = copyHistoryBtn.innerHTML;
+                copyHistoryBtn.innerHTML = '<i class="fa-solid fa-check" style="color: green;"></i>';
+                setTimeout(() => {
+                    copyHistoryBtn.innerHTML = originalIcon;
+                }, 1500);
+
+            } catch (err) {
+                console.error('Failed to copy full chat history:', err);
+                alert("נכשל בהעתקת היסטוריית השיחה. אנא נסה שוב או העתק ידנית.");
+            }
+        });
+    };
 	if (messagesContainer) {
 		messagesContainer.addEventListener('click', (e) => {
 			// Find the closest 'copy-btn' that was clicked
