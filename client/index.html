@@ -22,6 +22,8 @@
     <script src="firebase-init.js"></script>
 	<!-- 7. SortableJS library for the drag-and-drop functionality -->
 	<script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+	<!-- 8. Add PapaParse for CSV Import -->
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <!-- ============================== -->
 </head>
 <body>
@@ -106,10 +108,55 @@
                     <button class="tab-link" data-tab="categories-tab">קטגוריות</button>
 					<button class="tab-link" data-tab="audit-log-tab">יומן אירועים</button>
                 </div>
-                <div id="users-tab" class="tab-content active">
-                    <h3>ניהול משתמשים</h3>
-                    <p>כאן יוצגו פרטי המשתמשים במערכת...</p>
-                </div>
+				<div id="users-tab" class="tab-content active">
+					<h3>ניהול משתמשים</h3>
+					
+					<!-- NEW: User Management Toolbar -->
+					<div class="user-toolbar">
+						<div class="toolbar-actions">
+							<button id="add-user-btn" class="auth-btn"><i class="fa-solid fa-plus"></i> הוסף משתמש</button>
+							<button id="edit-user-btn" class="auth-btn" disabled><i class="fa-solid fa-pencil"></i> ערוך משתמש</button>
+							<button id="delete-users-btn" class="auth-btn delete-action-btn" disabled><i class="fa-solid fa-trash-alt"></i> מחק נבחרים</button>
+							<button id="reset-password-btn" class="auth-btn" disabled><i class="fa-solid fa-key"></i> אפס סיסמה</button>
+						</div>
+						<div class="dropdown-container" id="import-export-container">
+							<button id="import-export-btn" class="auth-btn secondary-btn">
+								<i class="fa-solid fa-file-import"></i> יבוא / יצוא
+							</button>
+							<div class="dropdown-menu" id="import-export-menu">
+								<a href="#" id="export-csv-btn">יצא כ-CSV</a>
+								<a href="#" id="export-json-btn">יצא כ-JSON</a>
+								<div class="dropdown-divider"></div>
+								<a href="#" id="import-csv-btn">יבא מ-CSV</a>
+								<a href="#" id="import-json-btn">יבא מ-JSON</a>
+							</div>
+						</div>
+						<div class="toolbar-search">
+							<i class="fa-solid fa-search"></i>
+							<input type="text" id="user-search-input" placeholder="חפש לפי שם פרטי או משפחה...">
+						</div>
+					</div>
+
+					<!-- NEW: User Table Container -->
+					<div class="user-table-container">
+						<table id="users-table">
+							<thead>
+								<tr>
+									<th class="col-check"><input type="checkbox" id="select-all-users-checkbox" title="בחר הכל"></th>
+									<th class="col-last-name">שם משפחה</th>
+									<th class="col-first-name">שם פרטי</th>
+									<th class="col-phone">מספר טלפון</th>
+									<th class="col-email">כתובת אימייל</th>
+									<th class="col-username">שם משתמש</th>
+								</tr>
+							</thead>
+							<tbody id="users-list">
+								<!-- User rows will be populated here by JavaScript -->
+								<tr><td colspan="6" style="text-align: center; padding: 20px;">טוען רשימת משתמשים...</td></tr>
+							</tbody>
+						</table>
+					</div>
+				</div>
                 <div id="categories-tab" class="tab-content">
                     <h3>ניהול קטגוריות</h3>
 					<div class="feature-flag-section">
@@ -333,6 +380,45 @@
             <h3>פרטי אירוע</h3>
             <pre id="modal-details-content"></pre>
             <button id="modal-close-btn" class="auth-btn" style="margin-top: 20px;">סגור</button>
+        </div>
+    </div>
+	<div id="user-form-modal" class="modal-overlay">
+        <div class="modal-content" style="direction: rtl; text-align: right;">
+            <h3 id="user-form-title">הוסף משתמש חדש</h3>
+            <form id="user-form">
+                <!-- Hidden input to store user ID for editing -->
+                <input type="hidden" id="user-id">
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="user-firstName">שם פרטי</label>
+                        <input type="text" id="user-firstName" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="user-lastName">שם משפחה</label>
+                        <input type="text" id="user-lastName" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="user-phone">מספר טלפון</label>
+                    <input type="tel" id="user-phone" required>
+                </div>
+                <div class="form-group">
+                    <label for="user-email">כתובת אימייל</label>
+                    <input type="email" id="user-email" required>
+                </div>
+                <div class="form-group">
+                    <label for="user-username">שם משתמש</label>
+                    <input type="text" id="user-username" required>
+                </div>
+                
+                <p id="user-form-error" class="error-message"></p>
+
+                <div class="form-actions">
+                    <button type="submit" class="auth-btn">שמור</button>
+                    <button type="button" id="user-modal-close-btn" class="auth-btn secondary-btn">בטל</button>
+                </div>
+            </form>
         </div>
     </div>
 	

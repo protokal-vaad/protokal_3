@@ -57,6 +57,23 @@ document.addEventListener('DOMContentLoaded', () => {
     const docViewerDocSelect = document.getElementById('doc-viewer-doc-select');
     const docViewerContent = document.getElementById('doc-viewer-content');
 	const docViewerCategorySelect = document.getElementById('doc-viewer-category-select');
+	// --- NEW: User Management Elements ---
+    const usersListBody = document.getElementById('users-list');
+    const selectAllUsersCheckbox = document.getElementById('select-all-users-checkbox');
+    const addUserBtn = document.getElementById('add-user-btn');
+    const editUserBtn = document.getElementById('edit-user-btn');
+    const deleteUsersBtn = document.getElementById('delete-users-btn');
+    const resetPasswordBtn = document.getElementById('reset-password-btn');
+    const userFormModal = document.getElementById('user-form-modal');
+    const userForm = document.getElementById('user-form');
+    const userFormTitle = document.getElementById('user-form-title');
+    const userFormError = document.getElementById('user-form-error');
+    const userModalCloseBtn = document.getElementById('user-modal-close-btn');
+	const importExportContainer = document.getElementById('import-export-container');
+    const importExportBtn = document.getElementById('import-export-btn');
+    const importExportMenu = document.getElementById('import-export-menu');
+    const userIdInput = document.getElementById('user-id');
+	const userSearchInput = document.getElementById('user-search-input');
     
     // --- PART 3: FIREBASE REFERENCES ---
     const categoriesCollection = db.collection("categories");
@@ -773,6 +790,301 @@ document.addEventListener('DOMContentLoaded', () => {
 			docViewerDocSelect.innerHTML = '<option value="" disabled selected>-- אין מסמכים בשנה זו --</option>';
 		}
 	}
+	// --- NEW: User Management Functions ---
+	// Checks if a username contains only English letters and numbers
+	function isValidUsername(username) {
+		// This regex matches a string that contains one or more characters
+		// that are exclusively a-z, A-Z, or 0-9.
+		const regex = /^[a-zA-Z0-9]+$/;
+		return regex.test(username);
+	}
+	// Checks if a phone number contains only digits (and optional dashes)
+	function isValidPhone(phone) {
+		// This regex first removes any dashes, then checks if the remaining
+		// string consists only of digits.
+		const regex = /^[0-9]+$/;
+		return regex.test(phone.replace(/-/g, ''));
+	}
+	// Checks the Firestore database to see if a username already exists
+	async function isUsernameTaken(username, currentUserId = null) {
+		if (!username) return false;
+		
+		// Create a query to find any user with the same username
+		const query = db.collection('users').where('username', '==', username);
+		
+		try {
+			const snapshot = await query.get();
+			
+			if (snapshot.empty) {
+				// No user found with this username, so it's available.
+				return false;
+			}
+
+			// If we are EDITING a user, we need to make sure the found username
+			// doesn't belong to the user we are currently editing.
+			if (currentUserId) {
+				// Check if any of the found documents have a DIFFERENT ID
+				// than the one we are editing.
+				for (const doc of snapshot.docs) {
+					if (doc.id !== currentUserId) {
+						return true; // Found a different user with this username
+					}
+				}
+				return false; // The only match was the user themselves
+			}
+			
+			// If we are ADDING a new user, any match means the username is taken.
+			return true;
+			
+		} catch (error) {
+			console.error("Error checking username uniqueness:", error);
+			// In case of an error, we should prevent the save to be safe.
+			return true;
+		}
+	}
+	// Renders the table of users from Firestore
+	async function renderUsersTable() {
+		if (!usersListBody) return;
+		usersListBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px;">טוען רשימת משתמשים...</td></tr>';
+
+		const searchTerm = userSearchInput.value.trim().toLowerCase();
+
+		try {
+			let users = [];
+
+			if (searchTerm) {
+				// --- NEW: Multi-Query Search Logic ---
+				console.log(`Searching for users where first or last name starts with: "${searchTerm}"`);
+
+				// Firestore "starts with" query trick: >= search term and < search term + high unicode character
+				const endTerm = searchTerm + '\uf8ff';
+
+				// Query 1: Search by firstName
+				const firstNameQuery = db.collection("users")
+					.where('firstName', '>=', searchTerm)
+					.where('firstName', '<', endTerm);
+				
+				// Query 2: Search by lastName
+				const lastNameQuery = db.collection("users")
+					.where('lastName', '>=', searchTerm)
+					.where('lastName', '<', endTerm);
+
+				const [firstNameResults, lastNameResults] = await Promise.all([
+					firstNameQuery.get(),
+					lastNameQuery.get()
+				]);
+
+				// Combine and de-duplicate the results
+				const usersMap = new Map();
+				firstNameResults.forEach(doc => usersMap.set(doc.id, { id: doc.id, ...doc.data() }));
+				lastNameResults.forEach(doc => usersMap.set(doc.id, { id: doc.id, ...doc.data() }));
+				
+				users = Array.from(usersMap.values());
+				
+				// Sort the combined results client-side
+				users.sort((a, b) => a.lastName.localeCompare(b.lastName, 'he'));
+
+			} else {
+				// --- Original Logic: Fetch all users ---
+				const snapshot = await db.collection("users").orderBy("lastName", "asc").get();
+				users = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+			}
+
+			if (users.length === 0) {
+				usersListBody.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 20px;">${searchTerm ? 'לא נמצאו משתמשים תואמים.' : 'לא נמצאו משתמשים.'}</td></tr>`;
+				return;
+			}
+
+			usersListBody.innerHTML = '';
+			users.forEach(user => {
+				const tr = document.createElement('tr');
+				// ... (The tr.innerHTML part is the same as before) ...
+				tr.innerHTML = `
+					<td class="col-check"><input type="checkbox" class="user-checkbox" data-user-id="${user.id}"></td>
+					<td class="col-last-name">${user.lastName || ''}</td>
+					<td class="col-first-name">${user.firstName || ''}</td>
+					<td class="col-phone">${user.phone || ''}</td>
+					<td class="col-email">${user.email || ''}</td>
+					<td class="col-username">${user.username || ''}</td>
+				`;
+				usersListBody.appendChild(tr);
+			});
+
+		} catch (error) {
+			console.error("Error fetching users:", error);
+			usersListBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px;">שגיאה בטעינת המשתמשים.</td></tr>';
+		}
+	}	// Enables/disables toolbar buttons based on selection
+	function updateUserToolbarState() {
+		const checkedBoxes = usersListBody.querySelectorAll('.user-checkbox:checked');
+		
+		editUserBtn.disabled = checkedBoxes.length !== 1;
+		resetPasswordBtn.disabled = checkedBoxes.length !== 1;
+		deleteUsersBtn.disabled = checkedBoxes.length === 0;
+
+		const allCheckboxes = usersListBody.querySelectorAll('.user-checkbox');
+		selectAllUsersCheckbox.checked = allCheckboxes.length > 0 && checkedBoxes.length === allCheckboxes.length;
+	}
+	// Opens the Add/Edit modal
+	function openUserModal(mode = 'add', userData = null) {
+		userForm.reset();
+		userFormError.textContent = '';
+		userIdInput.value = '';
+
+		if (mode === 'edit' && userData) {
+			userFormTitle.textContent = 'ערוך משתמש';
+			userIdInput.value = userData.id;
+			document.getElementById('user-firstName').value = userData.firstName || '';
+			document.getElementById('user-lastName').value = userData.lastName || '';
+			document.getElementById('user-phone').value = userData.phone || '';
+			document.getElementById('user-email').value = userData.email || '';
+			document.getElementById('user-username').value = userData.username || '';
+		} else {
+			userFormTitle.textContent = 'הוסף משתמש חדש';
+		}
+		
+		userFormModal.style.display = 'flex';
+	}
+	// Closes the Add/Edit modal
+	function closeUserModal() {
+		userFormModal.style.display = 'none';
+	}
+	// --- NEW: User Import/Export Functions ---
+	async function exportUsers(format = 'json') {
+		console.log(`Exporting users as ${format}...`);
+		try {
+			const snapshot = await db.collection("users").orderBy("lastName", "asc").get();
+			if (snapshot.empty) {
+				alert("לא נמצאו משתמשים לייצוא.");
+				return;
+			}
+
+			const users = snapshot.docs.map(doc => {
+				const data = doc.data();
+				// Select and order the fields for a clean export
+				return {
+					lastName: data.lastName,
+					firstName: data.firstName,
+					phone: data.phone,
+					email: data.email,
+					username: data.username,
+					role: data.role
+				};
+			});
+
+			const now = new Date();
+			const date = now.toLocaleDateString('en-GB').split('/').join('-');
+			const time = now.toTimeString().split(' ')[0].replace(/:/g, '');
+			const fileName = `users_${date}_${time}`;
+			
+			logAuditEvent('USERS_EXPORTED', `יוצאו ${users.length} משתמשים כ-${format.toUpperCase()}`, { count: users.length, format });
+
+			if (format === 'json') {
+				downloadFile(JSON.stringify(users, null, 2), `${fileName}.json`, 'application/json');
+			} else if (format === 'csv') {
+				const csvString = Papa.unparse(users); // Use PapaParse to easily create a CSV
+				downloadFile(csvString, `${fileName}.csv`, 'text/csv;charset=utf-8;');
+			}
+		} catch (error) {
+			console.error("Error exporting users:", error);
+			alert("שגיאה בייצוא המשתמשים.");
+		}
+	}
+	async function handleImportedUsers(users) {
+		const requiredFields = ['lastName', 'firstName', 'phone', 'email', 'username'];
+		
+		// --- Basic Validation ---
+		if (!users || users.length === 0) {
+			alert("קובץ ריק או לא תקין.");
+			return;
+		}
+		const firstUser = users[0];
+		if (!firstUser || !requiredFields.every(field => field in firstUser)) {
+			alert("קובץ לא תקין. יש לוודא שהקובץ מכיל את העמודות הנדרשות: " + requiredFields.join(', '));
+			return;
+		}
+
+		if (!confirm(`נמצאו ${users.length} משתמשים בקובץ. האם ברצונך להתחיל בתהליך היבוא והאימות?`)) return;
+
+		console.log("Starting import validation...");
+
+		// --- NEW: Uniqueness Validation Step ---
+		try {
+			// 1. Fetch all existing usernames from Firestore into a Set for fast lookups.
+			console.log("Fetching existing usernames from database...");
+			const existingUsernames = new Set();
+			const snapshot = await db.collection("users").get();
+			snapshot.forEach(doc => {
+				const username = doc.data().username;
+				if (username) {
+					existingUsernames.add(username.toLowerCase());
+				}
+			});
+			console.log(`Found ${existingUsernames.size} existing usernames.`);
+
+			// 2. Check for duplicates within the file and against the database.
+			const usernamesInFile = new Set();
+			const duplicateUsernames = [];
+
+			for (let i = 0; i < users.length; i++) {
+				const user = users[i];
+				const username = user.username ? user.username.toLowerCase() : '';
+
+				if (!username) {
+					alert(`שגיאה בשורה ${i + 2}: שם המשתמש חסר.`);
+					return;
+				}
+
+				// Check if username already exists in the database
+				if (existingUsernames.has(username)) {
+					duplicateUsernames.push(username);
+				}
+				
+				// Check if username is a duplicate within the file itself
+				if (usernamesInFile.has(username)) {
+					duplicateUsernames.push(username);
+				}
+				usernamesInFile.add(username);
+			}
+
+			// 3. If any duplicates are found, abort the entire operation.
+			if (duplicateUsernames.length > 0) {
+				// Use a Set to show only unique duplicate names in the error
+				const uniqueDuplicates = [...new Set(duplicateUsernames)];
+				alert(`היבוא בוטל. נמצאו שמות משתמש כפולים:\n\n${uniqueDuplicates.join(', ')}\n\nאנא תקן את הקובץ ונסה שוב.`);
+				return;
+			}
+
+			console.log("Validation successful. No duplicates found. Proceeding with import.");
+			
+			// --- End of Uniqueness Validation ---
+
+
+			// If validation passes, proceed with the batch write.
+			const batch = db.batch();
+			users.forEach(user => {
+				const newUserRef = db.collection("users").doc();
+				batch.set(newUserRef, {
+					firstName: user.firstName || '',
+					lastName: user.lastName || '',
+					phone: user.phone || '',
+					email: user.email || '',
+					username: user.username, // We know it exists from validation
+					role: 'member',
+					createdAt: firebase.firestore.FieldValue.serverTimestamp()
+				});
+			});
+
+			await batch.commit();
+			logAuditEvent('USERS_IMPORTED', `יובאו ${users.length} משתמשים חדשים`, { count: users.length });
+			alert(`${users.length} משתמשים יובאו בהצלחה!`);
+			await renderUsersTable();
+
+		} catch (error) {
+			console.error("Error during user import validation or commit:", error);
+			alert("אירעה שגיאה קריטית במהלך היבוא. אנא בדוק את הקונסול.");
+		}
+	}
 
 	// --- PART 6: EVENT LISTENERS ---
 	window.addEventListener('resize', setAppHeight);
@@ -1359,6 +1671,225 @@ document.addEventListener('DOMContentLoaded', () => {
 			}
 		});
 	}
+    // --- NEW: User Management Event Listeners ---
+    // When the Users tab is clicked, render the table
+    const usersTabLink = document.querySelector('.tab-link[data-tab="users-tab"]');
+    if (usersTabLink) {
+        usersTabLink.addEventListener('click', renderUsersTable);
+    }
+    
+    // Use event delegation for checkboxes in the table body
+    if (usersListBody) {
+        usersListBody.addEventListener('change', (e) => {
+            if (e.target.classList.contains('user-checkbox')) {
+                updateUserToolbarState();
+            }
+        });
+    }
+
+    // Select All checkbox
+    if (selectAllUsersCheckbox) {
+        selectAllUsersCheckbox.addEventListener('change', () => {
+            usersListBody.querySelectorAll('.user-checkbox').forEach(cb => {
+                cb.checked = selectAllUsersCheckbox.checked;
+            });
+            updateUserToolbarState();
+        });
+    }
+
+    // Toolbar Buttons
+    if (addUserBtn) {
+        addUserBtn.addEventListener('click', () => openUserModal('add'));
+    }
+
+    if (editUserBtn) {
+        editUserBtn.addEventListener('click', async () => {
+            const selectedId = usersListBody.querySelector('.user-checkbox:checked').dataset.userId;
+            try {
+                const userDoc = await db.collection('users').doc(selectedId).get();
+                if (userDoc.exists) {
+                    openUserModal('edit', { id: userDoc.id, ...userDoc.data() });
+                }
+            } catch (error) {
+                console.error("Error fetching user for edit:", error);
+            }
+        });
+    }
+
+    if (deleteUsersBtn) {
+        deleteUsersBtn.addEventListener('click', async () => {
+            const checkedBoxes = usersListBody.querySelectorAll('.user-checkbox:checked');
+            if (checkedBoxes.length === 0) return;
+
+            if (confirm(`האם אתה בטוח שברצונך למחוק ${checkedBoxes.length} משתמשים?`)) {
+                const batch = db.batch();
+                const deletedUsers = [];
+                checkedBoxes.forEach(cb => {
+                    const docId = cb.dataset.userId;
+                    batch.delete(db.collection('users').doc(docId));
+                    deletedUsers.push(docId);
+                });
+                
+                try {
+                    await batch.commit();
+                    logAuditEvent('USERS_DELETED', `${deletedUsers.length} משתמשים נמחקו`, { count: deletedUsers.length, userIds: deletedUsers });
+                    alert(`${deletedUsers.length} משתמשים נמחקו בהצלחה.`);
+                    await renderUsersTable();
+                    updateUserToolbarState();
+                } catch (error) {
+                    console.error("Error deleting users:", error);
+                    alert("שגיאה במחיקת משתמשים.");
+                }
+            }
+        });
+    }
+
+    if (resetPasswordBtn) {
+        resetPasswordBtn.addEventListener('click', () => {
+            const selectedCheckbox = usersListBody.querySelector('.user-checkbox:checked');
+            const userEmail = selectedCheckbox.closest('tr').querySelector('.col-email').textContent;
+            
+            if (confirm(`האם לאפס סיסמה עבור ${userEmail}?`)) {
+                // Placeholder logic for now
+                logAuditEvent('PASSWORD_RESET', `איפוס סיסמה עבור ${userEmail}`, { email: userEmail });
+                alert("פונקציונליות איפוס סיסמה תחובר עם מערכת ההתחברות בעתיד.");
+            }
+        });
+    }
+
+    // Modal Form Listeners
+    if (userForm) {
+        userForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const userData = {
+                firstName: document.getElementById('user-firstName').value,
+                lastName: document.getElementById('user-lastName').value,
+                phone: document.getElementById('user-phone').value,
+                email: document.getElementById('user-email').value,
+                username: document.getElementById('user-username').value,
+            };
+            const userId = userIdInput.value;
+			
+			if (!isValidUsername(userData.username)) {
+                userFormError.textContent = "שם המשתמש יכול להכיל אותיות באנגלית ומספרים בלבד.";
+                return; // Stop the submission
+            }
+            if (!isValidPhone(userData.phone)) {
+                userFormError.textContent = "מספר הטלפון יכול להכיל ספרות בלבד.";
+                return; // Stop the submission
+            }
+            if (await isUsernameTaken(userData.username, userId)) {
+                userFormError.textContent = "שם המשתמש שהזנת כבר קיים במערכת.";
+                return; // Stop the submission
+            }
+
+            try {
+                if (userId) {
+                    // Editing existing user
+                    await db.collection('users').doc(userId).update(userData);
+                    logAuditEvent('USER_UPDATED', `המשתמש '${userData.email}' עודכן`, { userId, ...userData });
+                    alert("המשתמש עודכן בהצלחה.");
+                } else {
+                    // Creating new user
+                    userData.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+                    userData.role = 'member'; // Default role
+                    const docRef = await db.collection('users').add(userData);
+                    logAuditEvent('USER_CREATED', `המשתמש '${userData.email}' נוצר`, { userId: docRef.id, ...userData });
+                    alert("המשתמש נוצר בהצלחה.");
+                }
+                closeUserModal();
+                await renderUsersTable();
+                updateUserToolbarState();
+            } catch (error) {
+                console.error("Error saving user:", error);
+                userFormError.textContent = "שגיאה בשמירת המשתמש.";
+            }
+        });
+    }
+
+    if (userModalCloseBtn) {
+        userModalCloseBtn.addEventListener('click', closeUserModal);
+    }
+	// --- NEW: Import/Export Listeners ---
+    // Logic to open/close the dropdown menu
+    if (importExportBtn) {
+        importExportBtn.addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevent the window click from closing it immediately
+            importExportContainer.classList.toggle('open');
+        });
+    }
+    // Close the dropdown if the user clicks outside of it
+    window.addEventListener('click', () => {
+        if (importExportContainer.classList.contains('open')) {
+            importExportContainer.classList.remove('open');
+        }
+    });
+    // Add listeners for each menu item
+    if (importExportMenu) {
+        importExportMenu.addEventListener('click', (e) => {
+            e.preventDefault();
+            const targetId = e.target.id;
+
+            if (targetId === 'export-csv-btn') {
+                exportUsers('csv');
+            }
+            if (targetId === 'export-json-btn') {
+                exportUsers('json');
+            }
+            if (targetId === 'import-csv-btn' || targetId === 'import-json-btn') {
+                // Create a temporary file input to open the file dialog
+                const fileInput = document.createElement('input');
+                fileInput.type = 'file';
+                fileInput.accept = targetId === 'import-csv-btn' ? '.csv' : '.json';
+                
+                fileInput.onchange = (event) => {
+                    const file = event.target.files[0];
+                    if (!file) return;
+
+                    if (targetId === 'import-json-btn') {
+                        const reader = new FileReader();
+                        reader.onload = (e) => {
+                            try {
+                                const users = JSON.parse(e.target.result);
+                                if (Array.isArray(users)) {
+                                    handleImportedUsers(users);
+                                } else {
+                                    alert("קובץ JSON לא תקין. הקובץ חייב להכיל מערך של משתמשים.");
+                                }
+                            } catch (jsonError) {
+                                alert("שגיאה בפענוח קובץ ה-JSON.");
+                            }
+                        };
+                        reader.readAsText(file);
+                    } else { // CSV
+                        Papa.parse(file, {
+                            header: true,
+                            skipEmptyLines: true,
+                            complete: (results) => {
+                                handleImportedUsers(results.data);
+                            },
+                            error: (err) => {
+                                alert(`שגיאה בפענוח קובץ ה-CSV: ${err.message}`);
+                            }
+                        });
+                    }
+                };
+                fileInput.click();
+            }
+            // Close the menu after action
+            importExportContainer.classList.remove('open');
+        });
+    }
+	if (userSearchInput) {
+		// We use 'keyup' to trigger the search as the user types
+		userSearchInput.addEventListener('keyup', (e) => {
+			// A small delay (debounce) to prevent a query on every single keystroke
+			clearTimeout(userSearchInput.timer);
+			userSearchInput.timer = setTimeout(() => {
+				renderUsersTable();
+			}, 300); // Wait 300ms after the user stops typing
+		});
+	}
 	
     // --- PART 7: INITIALIZATION ---
 	async function initializeApp() {
@@ -1412,6 +1943,9 @@ document.addEventListener('DOMContentLoaded', () => {
 				emptyAdmin.style.display = isAdmin ? 'block' : 'none';
 				emptyUser.style.display = isAdmin ? 'none' : 'block';
 			}
+		}
+		if (document.querySelector('#users-tab.active')) {
+			renderUsersTable();
 		}
 	}
     initializeApp();

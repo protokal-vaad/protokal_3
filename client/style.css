@@ -1056,3 +1056,178 @@ input:checked + .slider:before {
 .doc-viewer-content {
     height: 100%; /* Fill the parent panel */
 }
+
+/* --- User Management Page Styles --- */
+
+.user-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px;
+    margin-bottom: 20px;
+    background-color: #f8f9fa;
+    border-radius: 8px;
+}
+
+.toolbar-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.toolbar-actions .auth-btn {
+    width: auto;
+    margin-top: 0;
+    padding: 8px 15px;
+    font-size: 14px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.toolbar-actions .auth-btn:disabled {
+    background-color: #ccc;
+    cursor: not-allowed;
+}
+
+.user-table-container {
+    overflow-y: auto;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    flex-grow: 1; /* Allow table to fill space if tab has flex layout */
+}
+
+#users-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+#users-table th, 
+#users-table td {
+    padding: 12px 15px;
+    text-align: right;
+    border-bottom: 1px solid #eee;
+    white-space: nowrap;
+}
+
+#users-table th {
+    background-color: #f1f3f6;
+    font-weight: 600;
+    position: sticky;
+    top: 0;
+}
+
+/* User table column widths */
+#users-table .col-check { width: 40px; text-align: center; }
+#users-table .col-last-name { width: 20%; }
+#users-table .col-first-name { width: 20%; }
+#users-table .col-phone { width: 20%; }
+#users-table .col-email { width: auto; }
+#users-table .col-username { width: 15%; }
+
+#users-table td:first-child,
+#users-table th:first-child {
+    text-align: center;
+}
+
+/* Add/Edit User Modal */
+#user-form-modal .modal-content {
+    direction: rtl; /* Ensure modal content is RTL */
+    text-align: right;
+}
+
+#user-form .form-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+    justify-content: flex-end;
+}
+
+#user-form .form-actions .auth-btn {
+    width: auto;
+}
+
+#user-form .secondary-btn {
+    background-color: #6c757d;
+}
+#user-form .secondary-btn:hover {
+    background-color: #5a6268;
+}
+
+/* --- Dropdown Button Styles --- */
+.dropdown-container {
+    position: relative;
+    display: inline-block;
+}
+
+.dropdown-menu {
+    display: none; /* Hidden by default */
+    position: absolute;
+    top: 100%; /* Position below the button */
+    left: 0;
+    background-color: white;
+    min-width: 160px;
+    box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+    z-index: 10;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.dropdown-menu a {
+    color: black;
+    padding: 12px 16px;
+    text-decoration: none;
+    display: block;
+    text-align: right;
+}
+
+.dropdown-menu a:hover {
+    background-color: #f1f1f1;
+}
+
+.dropdown-divider {
+    height: 1px;
+    margin: 4px 0;
+    overflow: hidden;
+    background-color: #e5e5e5;
+}
+
+.dropdown-container.open .dropdown-menu {
+    display: block; /* Show when container has 'open' class */
+}
+
+/* Secondary button style for non-primary actions */
+.auth-btn.secondary-btn {
+    background-color: #6c757d;
+}
+.auth-btn.secondary-btn:hover {
+    background-color: #5a6268;
+}
+
+/* --- User Management Toolbar Search Style --- */
+.toolbar-search {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.toolbar-search .fa-search {
+    position: absolute;
+    right: 15px; /* Position icon on the right for RTL */
+    color: #aaa;
+}
+
+#user-search-input {
+    width: 300px;
+    padding: 8px 15px;
+    padding-right: 40px; /* Make space for the icon */
+    border: 1px solid #ccc;
+    border-radius: 20px; /* Pill shape */
+    font-size: 15px;
+    transition: width 0.3s ease-in-out;
+}
+
+#user-search-input:focus {
+    width: 350px; /* Expand on focus */
+    outline: none;
+    border-color: var(--accent-color);
+}
