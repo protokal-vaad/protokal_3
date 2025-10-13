@@ -221,6 +221,7 @@ exports.processUploadedFile = onObjectFinalized({
 						text: chunk,
 						firestoreDocId: docRef.id,
 						filePath: filePath,
+						filename: tempFileName,
 						categoryId: categoryId
 					},
 				});

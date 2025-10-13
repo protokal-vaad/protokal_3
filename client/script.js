@@ -3,8 +3,8 @@
 document.addEventListener('DOMContentLoaded', () => {
     
     // --- PART 1: VALIDATE FIREBASE ---
-    if (typeof firebase === 'undefined' || typeof db === 'undefined' || typeof storage === 'undefined') {
-        console.error("Firebase services are not initialized. Check firebase-init.js and your index.html.");
+    if (typeof firebase === 'undefined' || typeof db === 'undefined' || typeof storage === 'undefined' || typeof firebase.functions === 'undefined') {
+        console.error("Firebase services are not initialized correctly. Check script load order in index.html.");
         alert("CRITICAL ERROR: Could not connect to the database. App cannot start.");
         return;
     }
@@ -50,7 +50,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const logDateStart = document.getElementById('log-date-start');
     const logDateEnd = document.getElementById('log-date-end');
     const applyFiltersBtn = document.getElementById('apply-filters-btn');
-
+    const copyHistoryBtn = document.getElementById('copy-history-btn');
+	const docViewerPage = document.getElementById('doc-viewer-page');
+    const menuDocViewerBtn = document.getElementById('menu-doc-viewer');
+    const docViewerYearSelect = document.getElementById('doc-viewer-year-select');
+    const docViewerDocSelect = document.getElementById('doc-viewer-doc-select');
+    const docViewerContent = document.getElementById('doc-viewer-content');
+	const docViewerCategorySelect = document.getElementById('doc-viewer-category-select');
     
     // --- PART 3: FIREBASE REFERENCES ---
     const categoriesCollection = db.collection("categories");
@@ -63,8 +69,16 @@ document.addEventListener('DOMContentLoaded', () => {
 	let sortableInstance = null;
 	const chatHistories = {}; // Start empty, will be populated dynamically
 	const chatConfig = {
-		// We only need to pre-define the static 'taknon' chat if it's in the HTML
-		taknon: { title: "צאט עם התקנון", greeting: `היי! אני פרוטו-קל, העוזר הוירטואלי שלכם...` }
+		// New, more welcoming message for the "general" chat
+		protocol: { 
+			title: "צאט עם פרוטוקול כללי", 
+			greeting: "שלום! 👋 אני <strong>פרוטו-קל</strong>. ניתן לשאול אותי שאלות כלליות, או לבחור קטגוריה ספציפית מהתפריט כדי להתמקד בנושא מסוים." 
+		},
+		// New, more welcoming message for the Taknon
+		taknon: { 
+			title: "צאט עם התקנון", 
+			greeting: "ברוכים הבאים לצ'אט התקנון! ⚖️ שאלו אותי כל דבר על נהלים, חוקים וכל מה שביניהם." 
+		}
 	};
     
     // --- PART 5: FUNCTION DEFINITIONS ---
@@ -91,6 +105,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (settingsPage) settingsPage.style.display = 'none';
         if (fileUploadPage) fileUploadPage.style.display = 'none';
         if (emptyStateContainer) emptyStateContainer.style.display = 'none';
+		if (docViewerPage) docViewerPage.style.display = 'none';
 
         if (pageToShow) {
             pageToShow.style.display = (pageToShow === chatPage || pageToShow === emptyStateContainer) ? 'flex' : 'block';
@@ -230,58 +245,59 @@ document.addEventListener('DOMContentLoaded', () => {
 			li.dataset.chatType = category.id;
 			li.innerHTML = `<a href="#">${category.name}</a>`;
 			protocolSubmenu.appendChild(li);
-			chatConfig[category.id] = { title: `צאט עם ${category.name}`, greeting: `שאל אותי...` };
+			if (!chatConfig[category.id]) {
+				chatConfig[category.id] = { 
+					title: `צאט עם ${category.name}`, 
+					greeting: `מחפש מידע מתוך פרוטוקול? שאל אותי כל דבר מתוך מאגר <strong>${category.name}</strong>. 📂 מה תרצו לדעת?` 
+				};
+			}
 		});
 		
 		// Control Taknon visibility with the feature flag
 		taknonMenuItem.style.display = appSettings.isTaknonChatEnabled ? 'list-item' : 'none';
 	}
-// in script.js, PART 5
-// Replace your existing populateCategoryDropdown with this DEBUG version
-
-	async function populateCategoryDropdown() {
-		const uploadCategorySelect = document.getElementById('upload-category-select');
-		if (!uploadCategorySelect) {
-			console.error("DEBUG: `uploadCategorySelect` element not found. Aborting.");
+	async function populateAllCategories(selectElement) {
+		if (!selectElement) {
+			console.error("--- DEBUG: populateAllCategories FAILED. Reason: 'selectElement' was not provided.");
 			return;
 		}
 		
-		uploadCategorySelect.innerHTML = '<option value="" disabled selected>-- בחר קטגוריה --</option>';
+		selectElement.innerHTML = '<option value="" disabled selected>-- בחר קטגוריה --</option>';
 		
-		console.log("--- DEBUG: Starting populateCategoryDropdown ---");
-		console.log("Current appSettings.isTaknonChatEnabled:", appSettings.isTaknonChatEnabled);
+		console.log(`--- DEBUG: Starting populateAllCategories for element: #${selectElement.id} ---`);
+		console.log(`Current appSettings.isTaknonChatEnabled: ${appSettings.isTaknonChatEnabled}`);
 
 		try {
-			console.log("Fetching ALL categories directly from Firestore for dropdown...");
+			console.log("Fetching ALL categories from Firestore for dropdown...");
 			const snapshot = await categoriesCollection.orderBy("order", "asc").get();
 
 			if (snapshot.empty) {
-				console.warn("DEBUG: Firestore query returned no categories.");
+				console.warn("DEBUG: Firestore query returned NO categories.");
 				return;
 			}
 
-			console.log(`DEBUG: Found ${snapshot.size} categories in Firestore.`);
+			console.log(`DEBUG: Firestore query returned ${snapshot.size} categories.`);
 
 			snapshot.forEach(doc => {
 				const category = { id: doc.id, ...doc.data() };
-				console.log(`  Processing category: ID=${category.id}, Name=${category.name}`);
+				console.log(`  > Processing category: ID=${category.id}, Name=${category.name}`);
 
 				if (category.id === 'taknon' && !appSettings.isTaknonChatEnabled) {
-					console.log("    -> Skipping 'taknon' because its feature flag is disabled.");
-					return; // The 'continue' statement for a forEach loop
+					console.log("    -> SKIPPING 'taknon' because its feature flag is disabled.");
+					return;
 				}
 
-				console.log(`    -> Adding '${category.name}' to the dropdown.`);
+				console.log(`    -> ADDING '${category.name}' to dropdown #${selectElement.id}.`);
 				const option = document.createElement('option');
 				option.value = category.id;
 				option.textContent = category.name;
-				uploadCategorySelect.appendChild(option);
+				selectElement.appendChild(option);
 			});
 
 		} catch (error) {
-			console.error("--- DEBUG: ERROR in populateCategoryDropdown ---", error);
+			console.error("--- DEBUG: ERROR occurred in populateAllCategories ---", error);
 		}
-		console.log("--- DEBUG: Finished populateCategoryDropdown ---");
+		console.log(`--- DEBUG: Finished populateAllCategories for #${selectElement.id} ---`);
 	}
 	async function renderCategoriesForSettings() { 
 		if (!categoriesList) return;
@@ -489,7 +505,7 @@ document.addEventListener('DOMContentLoaded', () => {
 		}
 
 		// 5. Populate the dropdown with the latest categories
-		populateCategoryDropdown();
+		populateAllCategories(uploadCategorySelect);
 	}
 	async function logAuditEvent(action, description, details = {}) {
 		if (typeof db === 'undefined') {
@@ -691,7 +707,73 @@ document.addEventListener('DOMContentLoaded', () => {
 			allCategories = [];
 		}
 	}
-	
+	// This global array will cache the file list so we don't have to re-fetch it constantly
+	let allUploadedFiles = [];
+	async function fetchAllFilesForViewer() {
+		console.log("Fetching all uploaded files for viewer...");
+		try {
+			const snapshot = await uploadedFilesCollection.orderBy("uploadedAt", "desc").get();
+			allUploadedFiles = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+			console.log(`Found ${allUploadedFiles.length} total files.`);
+		} catch (error) {
+			console.error("Error fetching all files:", error);
+			allUploadedFiles = [];
+		}
+	}
+	function populateYearFilter(selectedCategoryId) {
+		docViewerYearSelect.innerHTML = '<option value="" disabled selected>-- בחר שנה --</option>';
+		docViewerYearSelect.disabled = true;
+
+		if (!selectedCategoryId) return;
+
+		const years = new Set();
+		// Filter the global file list for the selected category first
+		allUploadedFiles
+			.filter(file => file.categoryId === selectedCategoryId)
+			.forEach(file => {
+				if (file.uploadedAt?.seconds) {
+					years.add(new Date(file.uploadedAt.seconds * 1000).getFullYear());
+				}
+			});
+
+		if (years.size > 0) {
+			Array.from(years).sort((a, b) => b - a).forEach(year => {
+				const option = document.createElement('option');
+				option.value = year;
+				option.textContent = year;
+				docViewerYearSelect.appendChild(option);
+			});
+			docViewerYearSelect.disabled = false; // Enable the dropdown
+		} else {
+			docViewerYearSelect.innerHTML = '<option value="" disabled selected>-- אין קבצים בקטגוריה זו --</option>';
+		}
+	}
+	function populateDocFilter(selectedCategoryId, selectedYear) {
+		docViewerDocSelect.innerHTML = '<option value="" disabled selected>-- בחר מסמך --</option>';
+		docViewerDocSelect.disabled = true;
+
+		if (!selectedCategoryId || !selectedYear) return;
+
+		const filesForYear = allUploadedFiles.filter(file => {
+			if (!file.uploadedAt?.seconds) return false;
+			const fileYear = new Date(file.uploadedAt.seconds * 1000).getFullYear();
+			// Filter by BOTH category and year
+			return file.categoryId === selectedCategoryId && fileYear == selectedYear;
+		});
+
+		if (filesForYear.length > 0) {
+			filesForYear.forEach(file => {
+				const option = document.createElement('option');
+				option.value = file.gcsPath;
+				option.textContent = file.fileName;
+				docViewerDocSelect.appendChild(option);
+			});
+			docViewerDocSelect.disabled = false; // Enable the dropdown
+		} else {
+			docViewerDocSelect.innerHTML = '<option value="" disabled selected>-- אין מסמכים בשנה זו --</option>';
+		}
+	}
+
 	// --- PART 6: EVENT LISTENERS ---
 	window.addEventListener('resize', setAppHeight);
 	if (emptyStateLink) {
@@ -831,7 +913,7 @@ document.addEventListener('DOMContentLoaded', () => {
 	menuToggleBtn.addEventListener('click', openSidebar);
 	closeMenuBtn.addEventListener('click', closeSidebar);
 	sidebarOverlay.addEventListener('click', closeSidebar);
-	sidebarMenu.addEventListener('click', (e) => {
+	sidebarMenu.addEventListener('click', async (e) => {
 		const clickedElement = e.target;
 		const clickedListItem = clickedElement.closest('li');
 		if (!clickedListItem) return;
@@ -872,6 +954,23 @@ document.addEventListener('DOMContentLoaded', () => {
 			setActiveMenuItem(clickedListItem);
 			showPage(fileUploadPage);
 			resetUploadPage();
+			closeSidebar();
+			return;
+		}
+		if (clickedListItem.id === 'menu-doc-viewer') {
+			e.preventDefault();
+			setActiveMenuItem(clickedListItem);
+			showPage(docViewerPage);
+			await fetchAllFilesForViewer();
+			await populateAllCategories(docViewerCategorySelect);
+			
+			// Reset the subsequent dropdowns
+			docViewerYearSelect.innerHTML = '<option value="" disabled selected>-- בחר שנה --</option>';
+			docViewerYearSelect.disabled = true;
+			docViewerDocSelect.innerHTML = '<option value="" disabled selected>-- בחר מסמך --</option>';
+			docViewerDocSelect.disabled = true;
+			docViewerContent.innerHTML = '<p>אנא בחר קטגוריה, שנה ומסמך לצפייה.</p>';
+			
 			closeSidebar();
 			return;
 		}
@@ -965,7 +1064,6 @@ document.addEventListener('DOMContentLoaded', () => {
             closeModal();
         }
     });
-	// in client/script.js, PART 6 (or wherever you defined it)
 	async function handleFileDeletion() {
 		const checkedBoxes = existingFilesList.querySelectorAll('.file-checkbox:checked');
 		if (checkedBoxes.length === 0) return;
@@ -1101,6 +1199,63 @@ document.addEventListener('DOMContentLoaded', () => {
 	}
 	deleteFilesBtnTop.addEventListener('click', handleFileDeletion);
 	deleteFilesBtnBottom.addEventListener('click', handleFileDeletion);
+    // Listener for the "Copy Entire Chat History" button
+    if (copyHistoryBtn) {
+        copyHistoryBtn.addEventListener('click', async () => {
+            console.log("Copy History button clicked!");
+            try {
+                let fullChatText = "פרוטוקול.ai - היסטוריית שיחה\n";
+                fullChatText += `תאריך: ${new Date().toLocaleDateString('he-IL')}\n\n`; // Add current date for context
+
+                if (window.chatHistory && window.chatHistory.length > 0) {
+                    window.chatHistory.forEach(msg => {
+                        const speakerLabel = msg.sender === 'user' ? 'משתמש' : 'פרוטוקול.ai';
+                        fullChatText += `[${speakerLabel}]\n${msg.text}\n`; // Clearly label speaker
+
+                        if (msg.sources && msg.sources.length > 0) {
+                            fullChatText += `  (מקורות: ${msg.sources.join(', ')})\n`;
+                        }
+                        fullChatText += '\n'; // Extra newline for spacing between messages
+                    });
+                } else {
+                    // Fallback: If chatHistory is not reliable or accessible, scrape from the UI
+                    console.warn("chatHistory not found or empty, falling back to scraping UI.");
+                    const messagesContainer = document.getElementById('messages-container');
+                    if (messagesContainer) {
+                        Array.from(messagesContainer.children).forEach(messageDiv => {
+                            // Identify sender from class names
+                            const speakerLabel = messageDiv.classList.contains('user-message-wrapper') ? 'משתמש' : 'פרוטוקול.ai';
+                            const textElement = messageDiv.querySelector('.message p');
+                            const sourcesElement = messageDiv.querySelector('.sources-info');
+
+                            if (textElement) {
+                                fullChatText += `[${speakerLabel}]: ${textElement.innerText.trim()}\n`;
+                            }
+                            if (sourcesElement) {
+                                fullChatText += `  (${sourcesElement.innerText.trim()})\n`;
+                            }
+                            fullChatText += '\n';
+                        });
+                    }
+                }
+
+                // Copy to clipboard
+                await navigator.clipboard.writeText(fullChatText);
+                console.log('Full chat history copied to clipboard!');
+
+                // Provide visual feedback
+                const originalIcon = copyHistoryBtn.innerHTML;
+                copyHistoryBtn.innerHTML = '<i class="fa-solid fa-check" style="color: green;"></i>';
+                setTimeout(() => {
+                    copyHistoryBtn.innerHTML = originalIcon;
+                }, 1500);
+
+            } catch (err) {
+                console.error('Failed to copy full chat history:', err);
+                alert("נכשל בהעתקת היסטוריית השיחה. אנא נסה שוב או העתק ידנית.");
+            }
+        });
+    };
 	if (messagesContainer) {
 		messagesContainer.addEventListener('click', (e) => {
 			// Find the closest 'copy-btn' that was clicked
@@ -1156,7 +1311,7 @@ document.addEventListener('DOMContentLoaded', () => {
 			// Update local state and re-render everything
 			appSettings.isTaknonChatEnabled = isEnabled;
 			renderSidebarMenu();
-			populateCategoryDropdown();
+			populateAllCategories();
 			alert(`Chat with Taknon has been ${isEnabled ? 'enabled' : 'disabled'}.`);
 		} catch (error) {
 			console.error("Error updating Taknon setting:", error);
@@ -1165,6 +1320,45 @@ document.addEventListener('DOMContentLoaded', () => {
 			taknonToggleCheckbox.checked = !isEnabled;
 		}
 	});
+    if (docViewerCategorySelect) {
+        docViewerCategorySelect.addEventListener('change', () => {
+            const selectedCategoryId = docViewerCategorySelect.value;
+            populateYearFilter(selectedCategoryId); // This function needs to be added
+            docViewerDocSelect.innerHTML = '<option value="" disabled selected>-- בחר מסמך --</option>';
+            docViewerDocSelect.disabled = true;
+            docViewerContent.innerHTML = '<p>אנא בחר שנה ומסמך לצפייה.</p>';
+        });
+    }
+    if (docViewerYearSelect) {
+        docViewerYearSelect.addEventListener('change', () => {
+            const selectedCategoryId = docViewerCategorySelect.value;
+            const selectedYear = docViewerYearSelect.value;
+            populateDocFilter(selectedCategoryId, selectedYear); // This function needs to be added
+            docViewerContent.innerHTML = '<p>אנא בחר מסמך לצפייה.</p>';
+        });
+    }
+	if (docViewerDocSelect) {
+		docViewerDocSelect.addEventListener('change', async () => {
+			const gcsPath = docViewerDocSelect.value;
+			if (!gcsPath) return;
+
+			docViewerContent.innerHTML = '<p>טוען מסמך...</p>';
+
+			try {
+				// Get a public download URL for the file from Cloud Storage
+				const fileRef = storage.ref(gcsPath);
+				const downloadUrl = await fileRef.getDownloadURL();
+
+				// Embed the document in an iframe. Use Google's viewer for cross-compatibility.
+				docViewerContent.innerHTML = `
+					<iframe src="https://docs.google.com/gview?url=${encodeURIComponent(downloadUrl)}&embedded=true"></iframe>
+				`;
+			} catch (error) {
+				console.error("Error getting download URL:", error);
+				docViewerContent.innerHTML = '<p>שגיאה בטעינת המסמך.</p>';
+			}
+		});
+	}
 	
     // --- PART 7: INITIALIZATION ---
 	async function initializeApp() {
@@ -1194,7 +1388,7 @@ document.addEventListener('DOMContentLoaded', () => {
 		
 		// 4. Render all UI components that depend on the data we just fetched
 		renderSidebarMenu();
-		populateCategoryDropdown();
+		//populateAllCategories();
 
 		// 5. Determine the startup page and default chat
 		const isAdmin = window.location.pathname.includes('/admin');

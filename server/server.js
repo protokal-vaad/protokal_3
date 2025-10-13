@@ -29,93 +29,115 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const pinecone = new Pinecone({ apiKey: process.env.PINECONE_API_KEY, });
 const pineconeIndex = pinecone.Index("protokal-ai"); // Use your index name
 
-// --- FINAL, ADVANCED "QUERY EXPANSION" CHAT ENDPOINT ---
+// --- FINAL, UNIFIED, "INTENT-BASED" CHAT ENDPOINT ---
 app.post('/api/chat-stream', async (req, res) => {
     const { message, chatType, history } = req.body;
 
     res.setHeader('Content-Type', 'text-event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.flushHeaders(); 
+    // ... (other headers are correct)
 
     try {
-        console.log(`\n--- RAG Request (Category: ${chatType}): "${message}" ---`);
-        
-        // --- STEP 1: QUERY EXPANSION ---
-        // Ask a fast LLM to generate multiple, related search queries.
-        console.log("Step 1a: Generating expanded search queries...");
-        const expansionMessages = [
-            { role: 'system', content: 'You are a helpful search assistant. Based on the user\'s question and conversation history, generate a short list of 3-4 diverse, related search queries that would help find the answer in a database of official protocols. The queries should be in Hebrew. Respond ONLY with the queries, separated by newlines.'},
-            { role: 'user', content: `Conversation History:\n${(history || []).map(h => `${h.sender}: ${h.text}`).join('\n')}\n\nOriginal Question: "${message}"` }
+        console.log(`\n--- Unified Request (Category: ${chatType}): "${message}" ---`);
+
+        // --- STEP 1: INTENT CLASSIFICATION ---
+        console.log("Step 1: Classifying user intent...");
+        const intentMessages = [
+            { role: 'system', content: "You are an expert request router. Classify the user's latest query into one of two categories: 'Specific_QA' for questions seeking a specific fact, name, date, or detail (like 'who?', 'what was?', 'when did?'), or 'Broad_Analysis' for questions asking for summaries, main topics, or general themes (like 'summarize', 'what are the main topics?'). Respond with ONLY the category name." },
+            { role: 'user', content: `Conversation History:\n${(history || []).map(h => `${h.sender}: ${h.text}`).join('\n')}\n\nLatest Question: "${message}"` }
         ];
-        const expansionResponse = await openai.chat.completions.create({
-            model: 'gpt-3.5-turbo', 
-            messages: expansionMessages, 
-            max_tokens: 200, 
-            temperature: 0.3
+        const intentResponse = await openai.chat.completions.create({
+            model: 'gpt-3.5-turbo',
+            messages: intentMessages,
+            max_tokens: 10,
+            temperature: 0,
         });
-        const expandedQueries = expansionResponse.choices[0].message.content;
-        
-        // Combine the original question with the new ones for a powerful search input
-        const searchInput = `${message}\n${expandedQueries}`;
-        console.log(`Step 1b: Expanded search input for embedding: "${searchInput.replace(/\n/g, ' | ')}"`);
+        const intent = intentResponse.choices[0].message.content.trim();
+        console.log(`Step 1b: Intent classified as: ${intent}`);
+        // --- END OF STEP 1 ---
 
-        // --- STEP 2: EMBED THE EXPANDED QUERY ---
-        console.log("Step 2: Creating embedding for the expanded query...");
-        const embeddingResponse = await openai.embeddings.create({
-            model: "text-embedding-3-small", 
-            input: searchInput,
-        });
-        const questionVector = embeddingResponse.data[0].embedding;
+        let stream;
 
-        // --- STEP 3: QUERY PINECONE ---
-        console.log("Step 3: Querying Pinecone with the expanded vector...");
-        const queryResponse = await pineconeIndex.query({
-            topK: 7, // Get a healthy number of results
-            vector: questionVector,
-            filter: { "categoryId": { "$eq": chatType } },
-			includeValues: true, 
-            includeMetadata: true,
-        });
-        
-        // --- STEP 4: CONSTRUCT CONTEXT (No threshold) ---
-        // We will pass more context and trust the powerful final LLM to be the "reranker"
-        const context = queryResponse.matches
-			.map(match => match.metadata?.text)
-            .filter(text => text)
-			.join("\n\n---\n\n");
-        
-		console.log(`Step 4: Constructed context from ${queryResponse.matches.length} matches.`);
+        if (intent.includes('Specific_QA')) {
+            // --- PATH A: RAG for Specific Questions (Simple & Robust) ---
+            console.log("--> Executing Specific Q&A Path <--");
+            
+            // 1. Embed the user's direct question and history
+            const historyString = (history || []).map(h => h.text).join('\n');
+            const searchInput = `${historyString}\n${message}`.trim();
+            console.log(`Step 2a: Creating embedding for search query: "${searchInput}"`);
+            const embeddingResponse = await openai.embeddings.create({ model: "text-embedding-3-small", input: searchInput });
+            const questionVector = embeddingResponse.data[0].embedding;
 
-        // --- STEP 5: GENERATE FINAL ANSWER ---
-        const systemPrompt = "You are an AI assistant named Proto-Kal. Your task is to answer the user's question with extreme precision, based ONLY on the provided Context from official documents. The Conversation History is provided for context about follow-up questions. If the answer is not present in the Context, you MUST respond with the Hebrew phrase 'לא מצאתי תשובה לכך במסמכים שסופקו.' and nothing else.";
-        
-        const historyForPrompt = (history || []).map(h => ({ role: h.sender === 'user' ? 'user' : 'assistant', content: h.text }));
+            // 2. Query Pinecone
+            console.log("Step 2b: Querying Pinecone...");
+            const queryResponse = await pineconeIndex.query({
+                topK: 10, 
+				vector: questionVector, 
+				filter: { "categoryId": { "$eq": chatType } },
+                includeValues: true, 
+				includeMetadata: true,
+            });
+            
+            // 3. Construct Context with a threshold
+            const RELEVANCE_THRESHOLD = 0.30; // A reasonable threshold
+            const context = queryResponse.matches
+                .filter(match => match.score >= RELEVANCE_THRESHOLD)
+                .map(match => match.metadata?.text)
+                .filter(text => text)
+                .join("\n\n---\n\n");
+            console.log(`Step 2c: Constructed context from ${queryResponse.matches.filter(m => m.score >= RELEVANCE_THRESHOLD).length} valid matches.`);
+			if (!context.trim()) {
+				console.log("No sufficient context found, responding directly.");
+				res.write(`data: ${JSON.stringify({ content: "לא מצאתי תשובה לכך במסמכים שסופקו." })}\n\n`);
+				res.write(`data: [DONE]\n\n`);
+				res.end();
+				return;
+            
+            // 4. Build Final Prompt and get stream
+            const systemPrompt = "You are an AI assistant, Proto-Kal. Answer the user's question with precision, based ONLY on the provided Context. Always respond in Hebrew. If the answer is not in the Context, state 'לא מצאתי תשובה לכך במסמכים שסופקו.'";
+            const historyForPrompt = (history || []).map(h => ({ role: h.sender === 'user' ? 'user' : 'assistant', content: h.text }));
+            const finalMessages = [
+                { role: 'system', content: systemPrompt },
+                ...historyForPrompt,
+                { role: 'user', content: `להלן הקשר רלוונטי שבו יש את התשובה לשאלתי. אנא השב במדויק על השאלה שלי בהתבסס אך ורק על המידע בקשר זה. אם התשובה אינה מופיעה כאן, ציין זאת. \n\nהקשר:\n${context}\n\nשאלה: ${message}` }
+            ];
+            stream = await openai.chat.completions.create({ model: 'gpt-4o', messages: finalMessages, stream: true });
 
-        const finalMessages = [
-            { role: 'system', content: systemPrompt },
-            ...historyForPrompt,
-            { role: 'user', content: `Here is the relevant context from the documents:\n\n--- CONTEXT START ---\n${context}\n--- CONTEXT END ---\n\nBased on the context above, please answer this question: "${message}"` }
-        ];
+        } else { // Default to Broad_Analysis
+            // --- PATH B: RAG for Analysis Questions ---
+            console.log("--> Executing Broad Analysis Path <--");
 
-        console.log("Step 5: Streaming the final answer from OpenAI...");
-        const stream = await openai.chat.completions.create({
-            model: 'gpt-4o',
-            messages: finalMessages,
-            stream: true,
-        });
+            // 1. Fetch a broad sample from Pinecone
+            const dummyVector = new Array(1536).fill(0);
+            const queryResponse = await pineconeIndex.query({
+                topK: 50, vector: dummyVector, filter: { "categoryId": { "$eq": chatType } },
+                includeMetadata: true,
+            });
+            if (!queryResponse.matches || queryResponse.matches.length === 0) {
+                throw new Error("No documents found for this category to analyze.");
+            }
+            const context = queryResponse.matches.map(match => match.metadata?.text).filter(text => text).join("\n\n---\n\n");
+            
+            // 2. Build Analyst Prompt and get stream
+            const systemPrompt = "You are a professional data analyst. Based ONLY on the provided documents, answer the user's question. The user is asking for a summary, a list of main topics, or a conceptual analysis. Respond in Hebrew.";
+            const finalMessages = [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: `Documents:\n${context}\n\nBased on the documents above, please answer my question: "${message}"` }
+            ];
+            stream = await openai.chat.completions.create({ model: 'gpt-4o', messages: finalMessages, stream: true });
+        }
 
+        // --- Stream the result from the chosen path ---
         for await (const chunk of stream) {
             const content = chunk.choices[0]?.delta?.content || "";
             if (content) {
                 res.write(`data: ${JSON.stringify({ content })}\n\n`);
             }
-        }
-        
+        }}
+
     } catch (error) {
-        console.error("\n!!! Error in RAG pipeline !!!", error);
-        const errorData = JSON.stringify({ error: 'Failed to get response', details: error.message });
-        res.write(`data: ${errorData}\n\n`);
+        console.error("\n!!! Error in Unified RAG pipeline !!!", error);
+        // ... (your error handling)
     } finally {
         res.write(`data: [DONE]\n\n`);
         res.end();

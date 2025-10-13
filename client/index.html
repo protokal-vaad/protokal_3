@@ -55,7 +55,9 @@
 				<li data-chat-type="taknon" style="display: none;">
 					<a href="#"><i class="fa-solid fa-gavel"></i> צאט עם התקנון</a>
 				</li>
-
+				<li id="menu-doc-viewer">
+					<a href="#"><i class="fa-solid fa-file-lines"></i> צפייה בפרוטוקולים</a>
+				</li>
 				<!-- Admin items -->
 				<li id="menu-files" class="admin-only" style="display: none;">
 					<a href="#"><i class="fa-solid fa-upload"></i> העלאת קבצים</a>
@@ -281,6 +283,45 @@
 						</div>
 					</div>
 
+				</div>
+			</div>
+			<div id="doc-viewer-page" class="page-container" style="display: none;">
+				<h2>צפייה בפרוטוקולים</h2>
+
+				<div class="viewer-layout">
+					<!-- New panel structure for filters -->
+					<div class="viewer-filters-panel">
+						<div class="panel-header">
+							<h4>סינון מסמכים</h4>
+						</div>
+						<div class="doc-viewer-filters">
+							<div class="form-group">
+								<label for="doc-viewer-category-select">בחר קטגוריה</label>
+								<select id="doc-viewer-category-select">
+									<option value="" disabled selected>-- בחר קטגוריה --</option>
+								</select>
+							</div>
+							<div class="form-group">
+								<label for="doc-viewer-year-select">בחר שנה</label>
+								<select id="doc-viewer-year-select" disabled>
+									<option value="" disabled selected>-- בחר שנה --</option>
+								</select>
+							</div>
+							<div class="form-group">
+								<label for="doc-viewer-doc-select">בחר מסמך</label>
+								<select id="doc-viewer-doc-select" disabled>
+									<option value="" disabled selected>-- בחר מסמך --</option>
+								</select>
+							</div>
+						</div>
+					</div>
+
+					<!-- New panel structure for the content -->
+					<div class="viewer-content-panel">
+						<div id="doc-viewer-content" class="doc-viewer-content">
+							<p>אנא בחר קטגוריה, שנה ומסמך לצפייה.</p>
+						</div>
+					</div>
 				</div>
 			</div>
         </div> <!-- End of page-content-container -->
