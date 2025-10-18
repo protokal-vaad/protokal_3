@@ -15,6 +15,7 @@
   "main": "index.js",
   "dependencies": {
     "@google-cloud/secret-manager": "^5.0.1",
+    "@google-cloud/vision": "^5.3.4",
     "@pinecone-database/pinecone": "^2.2.0",
     "firebase-admin": "^11.11.1",
     "firebase-functions": "^5.0.1",

@@ -88,20 +88,23 @@ app.post('/api/chat-stream', async (req, res) => {
             console.log(`Step 2c: Constructed context from ${queryResponse.matches.filter(m => m.score >= RELEVANCE_THRESHOLD).length} valid matches.`);
 			if (!context.trim()) {
 				console.log("No sufficient context found, responding directly.");
-				res.write(`data: ${JSON.stringify({ content: "לא מצאתי תשובה לכך במסמכים שסופקו." })}\n\n`);
-				res.write(`data: [DONE]\n\n`);
-				res.end();
-				return;
-            
-            // 4. Build Final Prompt and get stream
-            const systemPrompt = "You are an AI assistant, Proto-Kal. Answer the user's question with precision, based ONLY on the provided Context. Always respond in Hebrew. If the answer is not in the Context, state 'לא מצאתי תשובה לכך במסמכים שסופקו.'";
-            const historyForPrompt = (history || []).map(h => ({ role: h.sender === 'user' ? 'user' : 'assistant', content: h.text }));
-            const finalMessages = [
-                { role: 'system', content: systemPrompt },
-                ...historyForPrompt,
-                { role: 'user', content: `להלן הקשר רלוונטי שבו יש את התשובה לשאלתי. אנא השב במדויק על השאלה שלי בהתבסס אך ורק על המידע בקשר זה. אם התשובה אינה מופיעה כאן, ציין זאת. \n\nהקשר:\n${context}\n\nשאלה: ${message}` }
-            ];
-            stream = await openai.chat.completions.create({ model: 'gpt-4o', messages: finalMessages, stream: true });
+				stream = new ReadableStream({
+					start(controller) {
+						controller.enqueue(`data: ${JSON.stringify({ content: "לא מצאתי תשובה לכך במסמכים שסופקו." })}\n\n`);
+						controller.close();
+					}
+				});
+			} else {
+				// 4. Build Final Prompt and get stream
+				const systemPrompt = "You are a helpful AI assistant named Proto-Kal. Your task is to answer the user's question accurately and concisely, using ONLY the provided context from official documents. Add date and protocol number to each item in the response where you can. Always respond in Hebrew.";
+				const historyForPrompt = (history || []).map(h => ({ role: h.sender === 'user' ? 'user' : 'assistant', content: h.text }));
+				const finalMessages = [
+					{ role: 'system', content: systemPrompt },
+					...historyForPrompt,
+					{ role: 'user', content: `Please answer the following question based only on the context provided below.\n\nContext:\n${context}\n\nQuestion: ${message}` }
+				];
+				stream = await openai.chat.completions.create({ model: 'gpt-4o', messages: finalMessages, stream: true });
+			}
 
         } else { // Default to Broad_Analysis
             // --- PATH B: RAG for Analysis Questions ---
@@ -110,7 +113,7 @@ app.post('/api/chat-stream', async (req, res) => {
             // 1. Fetch a broad sample from Pinecone
             const dummyVector = new Array(1536).fill(0);
             const queryResponse = await pineconeIndex.query({
-                topK: 50, vector: dummyVector, filter: { "categoryId": { "$eq": chatType } },
+                topK: 25, vector: dummyVector, filter: { "categoryId": { "$eq": chatType } },
                 includeMetadata: true,
             });
             if (!queryResponse.matches || queryResponse.matches.length === 0) {
@@ -133,7 +136,7 @@ app.post('/api/chat-stream', async (req, res) => {
             if (content) {
                 res.write(`data: ${JSON.stringify({ content })}\n\n`);
             }
-        }}
+        }
 
     } catch (error) {
         console.error("\n!!! Error in Unified RAG pipeline !!!", error);

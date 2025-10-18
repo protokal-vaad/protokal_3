@@ -676,12 +676,13 @@ ul.submenu li.active a {
 
 .panel-header {
     display: flex;
-    justify-content: space-between; /* Pushes items to opposite ends */
+    justify-content: flex-start; /* Change from space-between */
     align-items: center;
     padding: 10px 15px;
     border-bottom: 1px solid #e0e0e0;
     background-color: #f1f3f6;
-    gap: 15px; /* Adds space between items */
+    gap: 15px;
+    flex-wrap: wrap;
 }
 
 .panel-header h4 {
@@ -692,7 +693,8 @@ ul.submenu li.active a {
     white-space: nowrap; /* Prevent title from wrapping */
     overflow: hidden; /* Hide overflow if panel gets too small */
     text-overflow: ellipsis; /* Add "..." if title is too long */
-    flex-grow: 1; /* NEW: Tell the title to take up all available space */
+    flex-grow: 0;
+    flex-shrink: 0;
 }
 
 #delete-files-btn-top {
@@ -1058,23 +1060,29 @@ input:checked + .slider:before {
 }
 
 /* --- User Management Page Styles --- */
-
 .user-toolbar {
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-start; /* Align all items to the start (right in RTL) */
     align-items: center;
+    flex-wrap: wrap; /* Allow items to wrap on small screens */
+    gap: 10px; /* This will now create consistent spacing between all items */
     padding: 15px;
     margin-bottom: 20px;
     background-color: #f8f9fa;
     border-radius: 8px;
 }
 
+/* Style for the group of action buttons on the left */
 .toolbar-actions {
     display: flex;
     gap: 10px;
+    align-items: center;
 }
 
-.toolbar-actions .auth-btn {
+/* A single, unified style for ALL buttons in the toolbar */
+.toolbar-actions .auth-btn, 
+.toolbar-actions .dropdown-container > .auth-btn,
+#import-export-btn { 
     width: auto;
     margin-top: 0;
     padding: 8px 15px;
@@ -1082,11 +1090,54 @@ input:checked + .slider:before {
     display: inline-flex;
     align-items: center;
     gap: 8px;
+    white-space: nowrap; /* Prevent button text from wrapping */
 }
 
 .toolbar-actions .auth-btn:disabled {
-    background-color: #ccc;
+    background-color: #adb5bd;
+    border-color: #adb5bd;
     cursor: not-allowed;
+    opacity: 0.65;
+}
+
+/* Style for the user counter */
+.toolbar-info {
+    padding: 0 15px;
+}
+
+/* Style for the search bar, making it the flexible element */
+.toolbar-search {
+    position: relative;
+    display: flex;
+    align-items: center;
+    margin-right: auto; /* CRITICAL: This pushes the search bar to the far left */
+}
+
+.toolbar-search .fa-search {
+    position: absolute;
+    right: 15px;
+    color: #aaa;
+    pointer-events: none;
+}
+
+.toolbar-search input {
+    width: 250px;
+    padding: 8px 15px;
+    padding-right: 40px;
+    border: 1px solid #ccc;
+    border-radius: 20px;
+    font-size: 14px;
+    transition: all 0.3s ease-in-out;
+}
+
+.toolbar-search input:focus {
+    width: 300px;
+    outline: none;
+    border-color: var(--accent-color);
+}
+
+.file-list-panel .toolbar-search {
+    margin-right: auto;
 }
 
 .user-table-container {
@@ -1208,26 +1259,78 @@ input:checked + .slider:before {
     position: relative;
     display: flex;
     align-items: center;
+	margin-right: 0;
+    margin-left: 0;
+}
+
+.toolbar-info {
+    /* This pushes the search bar to the right */
+    margin-right: auto; 
+    padding: 0 15px;
 }
 
 .toolbar-search .fa-search {
     position: absolute;
     right: 15px; /* Position icon on the right for RTL */
     color: #aaa;
+	pointer-events: none; /* Make the icon non-clickable */
 }
 
-#user-search-input {
-    width: 300px;
+.toolbar-search input {
+    width: 220px; /* A fixed width is better in this constrained header */
     padding: 8px 15px;
-    padding-right: 40px; /* Make space for the icon */
+    padding-right: 40px; /* Space for the icon */
     border: 1px solid #ccc;
-    border-radius: 20px; /* Pill shape */
-    font-size: 15px;
-    transition: width 0.3s ease-in-out;
+    border-radius: 20px;
+    font-size: 14px;
+    transition: all 0.3s ease-in-out;
 }
 
-#user-search-input:focus {
-    width: 350px; /* Expand on focus */
+.toolbar-search input:focus {
     outline: none;
     border-color: var(--accent-color);
+    box-shadow: 0 0 0 2px rgba(138, 127, 245, 0.2);
 }
+
+/* --- Sortable Table Header Styles --- */
+#existing-files-table th.sortable {
+    cursor: pointer;
+    position: relative;
+    padding-left: 30px; /* Make space for sort icon */
+}
+
+#existing-files-table th.sortable:hover {
+    background-color: #e9ecef;
+}
+
+#existing-files-table .sort-icon {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #aaa;
+}
+
+#existing-files-table th.sorted-asc .sort-icon,
+#existing-files-table th.sorted-desc .sort-icon {
+    color: var(--accent-color);
+}
+
+/* --- File Counter Style --- */
+.header-count {
+    display: inline-block;
+    background-color: #d1d5db;
+    color: #4b5563;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 12px;
+}
+
+/* --- Top Delete Button Size Adjustment --- */
+#delete-files-btn-top {
+    /* These properties will make it match the bottom button */
+    padding: 8px 15px;
+    font-size: 14px;
+}
+

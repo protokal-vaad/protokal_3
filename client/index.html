@@ -131,6 +131,9 @@
 								<a href="#" id="import-json-btn">יבא מ-JSON</a>
 							</div>
 						</div>
+						<div class="toolbar-info">
+							<span id="user-count" class="header-count"></span>
+						</div>
 						<div class="toolbar-search">
 							<i class="fa-solid fa-search"></i>
 							<input type="text" id="user-search-input" placeholder="חפש לפי שם פרטי או משפחה...">
@@ -275,8 +278,12 @@
 					<div class="file-list-panel">
 						<div class="panel-header">
 							<h4>קבצים קיימים בקטגוריה</h4>
+							<div class="toolbar-search">
+								<i class="fa-solid fa-search"></i>
+								<input type="text" id="file-search-input" placeholder="חפש שם קובץ...">
+							</div>
 							<button id="delete-files-btn-top" class="auth-btn delete-action-btn" style="display: none;">
-								<i class="fa-solid fa-trash-alt"></i> מחק נבחרים
+								<i class="fa-solid fa-trash-alt"></i> מחק קבצים נבחרים
 							</button>
 						</div>
 
@@ -285,9 +292,20 @@
 								<thead>
 									<tr>
 										<th class="col-check"><input type="checkbox" id="select-all-checkbox" title="בחר הכל"></th>
-										<th class="col-name">שם קובץ</th>
-										<th class="col-date">תאריך העלאה</th>
-										<th class="col-status">סטטוס</th>
+										<th class="col-name sortable" data-sort="fileName">
+											<span>שם קובץ</span>
+											<span id="file-count" class="header-count"></span>
+											<i class="sort-icon fa-solid fa-sort"></i>
+										</th>
+										<th class="col-date sortable" data-sort="uploadedAt">
+											<span>תאריך העלאה</span>
+											<i class="sort-icon fa-solid fa-sort"></i>
+										</th>
+
+										<th class="col-status sortable" data-sort="status">
+											<span>סטטוס</span>
+											<i class="sort-icon fa-solid fa-sort"></i>
+										</th>
 									</tr>
 								</thead>
 								<tbody id="existing-files-list">
@@ -320,9 +338,6 @@
 						<div id="upload-action-area" style="display: none;">
 							<button id="upload-files-btn" class="auth-btn">
 								<i class="fa-solid fa-cloud-arrow-up"></i> בחר קבצים להעלאה
-							</button>
-							<button id="delete-files-btn" class="auth-btn delete-action-btn" style="display: none; margin-top: 15px;">
-								<i class="fa-solid fa-trash-alt"></i> מחק קבצים נבחרים
 							</button>
 							<div id="upload-progress-container">
 								<!-- Progress for individual file uploads will appear here -->

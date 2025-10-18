@@ -74,6 +74,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const importExportMenu = document.getElementById('import-export-menu');
     const userIdInput = document.getElementById('user-id');
 	const userSearchInput = document.getElementById('user-search-input');
+	const fileSearchInput = document.getElementById('file-search-input');
+	const userCountSpan = document.getElementById('user-count');
     
     // --- PART 3: FIREBASE REFERENCES ---
     const categoriesCollection = db.collection("categories");
@@ -98,6 +100,8 @@ document.addEventListener('DOMContentLoaded', () => {
 		}
 	};
     
+	let currentSort = { field: "fileName", direction: "asc" }; // Default sort
+	
     // --- PART 5: FUNCTION DEFINITIONS ---
 	function setActiveMenuItem(menuItem) {
 		sidebarMenu.querySelectorAll('li').forEach(item => item.classList.remove('active'));
@@ -380,46 +384,96 @@ document.addEventListener('DOMContentLoaded', () => {
 	}
 	async function displayExistingFiles(categoryId) {
 		const fileListBody = document.getElementById('existing-files-list');
-		if (!fileListBody) return;
+		const fileCountSpan = document.getElementById('file-count'); // Get the new counter element
+		if (!fileListBody || !fileCountSpan) return;
+
 		fileListBody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 20px;">טוען קבצים...</td></tr>';
-		
+		fileCountSpan.textContent = ''; // Clear the count while loading
+
 		try {
+			// We remove the .orderBy() here because we will perform a more flexible sort on the client-side.
 			const querySnapshot = await uploadedFilesCollection
 				.where("categoryId", "==", categoryId)
-				.orderBy("fileName", "asc")
 				.get();
 
 			if (querySnapshot.empty) {
 				fileListBody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 20px;">לא הועלו קבצים לקטגוריה זו.</td></tr>';
-			} else {
-				fileListBody.innerHTML = ''; // Clear the list
-				querySnapshot.forEach(doc => {
-					const file = { id: doc.id, ...doc.data() };
-					const tr = document.createElement('tr');
-					const statusText = file.status || 'pending';
-					const uploadDate = file.uploadedAt?.seconds ? 
-						new Date(file.uploadedAt.seconds * 1000).toLocaleDateString('he-IL') : 
-						'לא ידוע';
-
-					tr.innerHTML = `
-						<td class="col-check"><input type="checkbox" class="file-checkbox" data-doc-id="${file.id}"></td>
-						<td class="col-name">${file.fileName}</td>
-						<td class="col-date">${uploadDate}</td>
-						<td class="col-status"><span class="file-status ${statusText}">${statusText}</span></td>
-					`;
-					fileListBody.appendChild(tr);
-				});
+				fileCountSpan.textContent = '(0)'; // Update counter for empty state
+				return;
 			}
+
+			// --- NEW: Client-Side Sorting Logic ---
+			let files = [];
+			querySnapshot.forEach(doc => files.push({ id: doc.id, ...doc.data() }));
+			
+			const searchTerm = fileSearchInput.value.trim().toLowerCase();
+			if (searchTerm) {
+				files = files.filter(file => 
+					file.fileName.toLowerCase().includes(searchTerm)
+				);
+			}
+			
+			if (files.length === 0) {
+				const message = searchTerm ? 'לא נמצאו קבצים תואמים לחיפוש.' : 'לא הועלו קבצים לקטגוריה זו.';
+				fileListBody.innerHTML = `<tr><td colspan="4" style="text-align: center; padding: 20px;">${message}</td></tr>`;
+				fileCountSpan.textContent = '(0)';
+				return;
+			}
+
+			// Sort the array of files based on the global 'currentSort' state variable
+			files.sort((a, b) => {
+				// Get the values to compare, providing fallbacks for missing data
+				const valA = a[currentSort.field] || '';
+				const valB = b[currentSort.field] || '';
+
+				let comparison = 0;
+				// Special sorting for dates
+				if (currentSort.field === 'uploadedAt') {
+					const timeA = valA.seconds || 0;
+					const timeB = valB.seconds || 0;
+					comparison = timeA - timeB;
+				} else {
+					// Standard alphabetical sorting for text fields
+					comparison = valA.toString().localeCompare(valB.toString(), 'he');
+				}
+				
+				// Apply sort direction (asc or desc)
+				return currentSort.direction === 'asc' ? comparison : -comparison;
+			});
+			// --- END OF NEW SORTING LOGIC ---
+
+			fileListBody.innerHTML = ''; // Clear the list
+			
+			// Render the newly sorted 'files' array
+			files.forEach(file => {
+				const tr = document.createElement('tr');
+				const statusText = file.status || 'pending';
+				const uploadDate = file.uploadedAt?.seconds ? 
+					new Date(file.uploadedAt.seconds * 1000).toLocaleDateString('he-IL') : 
+					'לא ידוע';
+
+				tr.innerHTML = `
+					<td class="col-check"><input type="checkbox" class="file-checkbox" data-doc-id="${file.id}"></td>
+					<td class="col-name">${file.fileName}</td>
+					<td class="col-date">${uploadDate}</td>
+					<td class="col-status"><span class="file-status ${statusText}">${statusText}</span></td>
+				`;
+				fileListBody.appendChild(tr);
+			});
+
+			// --- NEW: Update the file counter ---
+			fileCountSpan.textContent = `(${files.length})`;
+
 		} catch (error) {
 			console.error("Error fetching existing files:", error);
 			fileListBody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 20px;">שגיאה בטעינת קבצים.</td></tr>';
 		} finally {
-			// --- THIS IS THE FIX for the delete buttons ---
-			// Always update button visibility after the list is rendered or re-rendered.
+			// Your existing logic here is correct
 			updateDeleteButtonsVisibility();
-			// --- END OF FIX ---
+			// Add the call to update the sort icons in the header
+			updateSortHeadersUI();
 		}
-	}
+	}	
 	function uploadFile(file, categoryId) {
 		const fileName = file.name;
 		// We create a folder structure in Storage for better organization: categoryId/fileName
@@ -477,7 +531,7 @@ document.addEventListener('DOMContentLoaded', () => {
 						status: 'pending', // Waiting for the Cloud Function to process it
 						uploadedAt: firebase.firestore.FieldValue.serverTimestamp()
 					});
-					const category = categories.find(c => c.id === categoryId);
+					const category = allCategories.find(c => c.id === categoryId);
 					const categoryName = category ? category.name : 'Unknown';
 					logAuditEvent('FILE_UPLOADED', `הקובץ '${file.name}' הועלה לקטגוריה '${categoryName}'`, { fileName: file.name, categoryId: categoryId, docId: docRef.id });
 					console.log(`Firestore record created for ${fileName}`);
@@ -748,13 +802,18 @@ document.addEventListener('DOMContentLoaded', () => {
 		allUploadedFiles
 			.filter(file => file.categoryId === selectedCategoryId)
 			.forEach(file => {
-				if (file.uploadedAt?.seconds) {
-					years.add(new Date(file.uploadedAt.seconds * 1000).getFullYear());
+				if (file.documentDate?.seconds) {
+					years.add(new Date(file.documentDate.seconds * 1000).getFullYear());
 				}
 			});
 
 		if (years.size > 0) {
-			Array.from(years).sort((a, b) => b - a).forEach(year => {
+			// 1. Convert the Set to an array of numbers.
+			const sortedYears = Array.from(years);
+			// 2. Sort the array in descending order (newest to oldest).
+			sortedYears.sort((a, b) => b - a);
+			// 3. Populate the dropdown with the sorted array.
+			sortedYears.forEach(year => {
 				const option = document.createElement('option');
 				option.value = year;
 				option.textContent = year;
@@ -772,8 +831,8 @@ document.addEventListener('DOMContentLoaded', () => {
 		if (!selectedCategoryId || !selectedYear) return;
 
 		const filesForYear = allUploadedFiles.filter(file => {
-			if (!file.uploadedAt?.seconds) return false;
-			const fileYear = new Date(file.uploadedAt.seconds * 1000).getFullYear();
+			if (!file.documentDate?.seconds) return false;
+			const fileYear = new Date(file.documentDate.seconds * 1000).getFullYear();
 			// Filter by BOTH category and year
 			return file.categoryId === selectedCategoryId && fileYear == selectedYear;
 		});
@@ -846,6 +905,7 @@ document.addEventListener('DOMContentLoaded', () => {
 	async function renderUsersTable() {
 		if (!usersListBody) return;
 		usersListBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px;">טוען רשימת משתמשים...</td></tr>';
+		if (userCountSpan) userCountSpan.textContent = '';
 
 		const searchTerm = userSearchInput.value.trim().toLowerCase();
 
@@ -888,6 +948,10 @@ document.addEventListener('DOMContentLoaded', () => {
 				// --- Original Logic: Fetch all users ---
 				const snapshot = await db.collection("users").orderBy("lastName", "asc").get();
 				users = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+			}
+			
+			if (userCountSpan) {
+				userCountSpan.textContent = `סה"כ: ${users.length}`;
 			}
 
 			if (users.length === 0) {
@@ -1084,6 +1148,24 @@ document.addEventListener('DOMContentLoaded', () => {
 			console.error("Error during user import validation or commit:", error);
 			alert("אירעה שגיאה קריטית במהלך היבוא. אנא בדוק את הקונסול.");
 		}
+	}
+	function updateSortHeadersUI() {
+		const allHeaders = document.querySelectorAll('#existing-files-table th.sortable');
+		allHeaders.forEach(th => {
+			th.classList.remove('sorted-asc', 'sorted-desc');
+			const sortIcon = th.querySelector('.sort-icon');
+			sortIcon.className = 'sort-icon fa-solid fa-sort'; // Reset icon
+
+			if (th.dataset.sort === currentSort.field) {
+				if (currentSort.direction === 'asc') {
+					th.classList.add('sorted-asc');
+					sortIcon.className = 'sort-icon fa-solid fa-sort-up';
+				} else {
+					th.classList.add('sorted-desc');
+					sortIcon.className = 'sort-icon fa-solid fa-sort-down';
+				}
+			}
+		});
 	}
 
 	// --- PART 6: EVENT LISTENERS ---
@@ -1291,6 +1373,7 @@ document.addEventListener('DOMContentLoaded', () => {
 	uploadCategorySelect.addEventListener('change', () => {
 		const selectedCategoryId = uploadCategorySelect.value;
 		if (selectedCategoryId) {
+			fileSearchInput.value = '';
 			uploadActionArea.style.display = 'block'; // Show the upload button
 			displayExistingFiles(selectedCategoryId); // Load the file list
 		} else {
@@ -1887,6 +1970,42 @@ document.addEventListener('DOMContentLoaded', () => {
 			clearTimeout(userSearchInput.timer);
 			userSearchInput.timer = setTimeout(() => {
 				renderUsersTable();
+			}, 300); // Wait 300ms after the user stops typing
+		});
+	}
+	const fileListHeader = document.querySelector('#existing-files-table thead');
+	if (fileListHeader) {
+		fileListHeader.addEventListener('click', (e) => {
+			const header = e.target.closest('th.sortable');
+			if (!header) return;
+
+			const sortField = header.dataset.sort;
+
+			// Toggle direction if clicking the same field, otherwise default to ascending
+			if (currentSort.field === sortField) {
+				currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+			} else {
+				currentSort.field = sortField;
+				currentSort.direction = 'asc';
+			}
+			
+			// Re-render the file list with the new sort order
+			const selectedCategoryId = uploadCategorySelect.value;
+			if (selectedCategoryId) {
+				displayExistingFiles(selectedCategoryId);
+			}
+		});
+	}
+	if (fileSearchInput) {
+		// We use 'keyup' to trigger the search as the user types
+		fileSearchInput.addEventListener('keyup', () => {
+			// A small delay (debounce) to prevent a re-render on every single keystroke
+			clearTimeout(fileSearchInput.timer);
+			fileSearchInput.timer = setTimeout(() => {
+				const selectedCategoryId = uploadCategorySelect.value;
+				if (selectedCategoryId) {
+					displayExistingFiles(selectedCategoryId);
+				}
 			}, 300); // Wait 300ms after the user stops typing
 		});
 	}
