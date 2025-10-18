@@ -336,7 +336,11 @@ document.addEventListener('DOMContentLoaded', () => {
 		protocolCategories.forEach(category => {
 			const li = document.createElement('li');
 			li.dataset.id = category.id;
-			li.innerHTML = `<span><i class="fa-solid fa-grip-vertical"></i> ${category.name}</span><button class="delete-btn" ...></button>`;
+			li.innerHTML = `<span class="category-name-display"><i class="fa-solid fa-grip-vertical"></i> ${category.name}</span>
+            <div class="category-actions">
+                <button class="icon-btn rename-btn" data-id="${category.id}" title="שנה שם"><i class="fa-solid fa-pencil"></i></button>
+                <button class="delete-btn" data-id="${category.id}" title="מחק קטגוריה">&times;</button>
+            </div>`;
 			categoriesList.appendChild(li);
 		});
 
@@ -1252,21 +1256,50 @@ document.addEventListener('DOMContentLoaded', () => {
 	});
 
 	categoriesList.addEventListener('click', async (e) => {
-        // We only care about clicks on elements with the 'delete-btn' class
-        if (e.target.classList.contains('delete-btn')) {
-            const categoryId = e.target.dataset.id;
-			const categoryName = e.target.closest('li').querySelector('span').innerText.trim();
-            if (confirm("האם אתה בטוח?")) {
-                try {
-                    await categoriesCollection.doc(categoryId).delete();
-					logAuditEvent('CATEGORY_DELETED', `הקטגוריה '${categoryName}' נמחקה`, { categoryId: categoryId, categoryName: categoryName });
-                    await renderCategoriesForSettings(); // Refresh settings list
-                    renderSidebarMenu(); // Refresh sidebar menu
-                } catch (error) {
-                    console.error("Error deleting category:", error);
-                }
-            }
-        }
+		const deleteBtn = e.target.closest('.delete-btn');
+		const renameBtn = e.target.closest('.rename-btn');
+	
+        // --- DELETE LOGIC (Corrected) ---
+		if (deleteBtn) {
+			const categoryId = deleteBtn.dataset.id;
+			const category = allCategories.find(c => c.id === categoryId);
+			const categoryName = category ? category.name : 'this category';
+
+			if (confirm(`האם אתה בטוח שברצונך למחוק את הקטגוריה '${categoryName}'? פעולה זו הינה סופית.`)) {
+				try {
+					await categoriesCollection.doc(categoryId).delete();
+					logAuditEvent('CATEGORY_DELETED', `הקטגוריה '${categoryName}' נמחקה`, { categoryId, categoryName });
+					await fetchCategories();
+					renderSidebarMenu();
+					await renderCategoriesForSettings();
+				} catch (error) {
+					console.error("Error deleting category:", error);
+					alert("שגיאה במחיקת קטגוריה.");
+				}
+			}
+		}
+
+		// --- RENAME LOGIC (New) ---
+		if (renameBtn) {
+			const categoryId = renameBtn.dataset.id;
+			const category = allCategories.find(c => c.id === categoryId);
+			const oldName = category ? category.name : '';
+
+			const newName = prompt(`הזן שם חדש עבור הקטגוריה '${oldName}':`, oldName);
+
+			if (newName && newName.trim() !== '' && newName.trim() !== oldName) {
+				try {
+					await categoriesCollection.doc(categoryId).update({ name: newName.trim() });
+					logAuditEvent('CATEGORY_RENAMED', `שם הקטגוריה '${oldName}' שונה ל-'${newName.trim()}'`, { categoryId, oldName, newName: newName.trim() });					
+					await fetchCategories();
+					renderSidebarMenu();
+					await renderCategoriesForSettings();
+				} catch (error) {
+					console.error("Error renaming category:", error);
+					alert("שגיאה בשינוי שם הקטגוריה.");
+				}
+			}
+		}
     });
 	
 	if (saveOrderBtn) {
