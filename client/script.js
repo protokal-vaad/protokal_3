@@ -1241,12 +1241,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
 				newCategoryNameInput.value = '';
 
-				// --- THIS IS THE FIX ---
 				// After adding, re-fetch all data and re-render everything
 				await fetchCategories(); // Re-fetch the complete 'allCategories' list
 				renderSidebarMenu(); // Re-draw the sidebar
 				renderCategoriesForSettings(); // Re-draw the settings panel list
-				// --- END OF FIX ---
 
 			} catch (error) {
 				console.error("Error adding category:", error);
@@ -1525,7 +1523,6 @@ document.addEventListener('DOMContentLoaded', () => {
 			const selectedCategoryId = uploadCategorySelect.value;
 			await displayExistingFiles(selectedCategoryId);
 
-			// --- THIS IS THE FIX ---
 			// After the list is refreshed, explicitly hide the delete buttons.
 			if (deleteFilesBtnTop) {
 				deleteFilesBtnTop.style.display = 'none';
@@ -1533,7 +1530,6 @@ document.addEventListener('DOMContentLoaded', () => {
 			if (deleteFilesBtnBottom) {
 				deleteFilesBtnBottom.style.display = 'none';
 			}
-			// --- END OF FIX ---
 
 		} catch (error) {
 			console.error("Error calling deleteFiles function:", error);
@@ -1617,12 +1613,10 @@ document.addEventListener('DOMContentLoaded', () => {
 			userInput.disabled = false;
 			sendBtn.disabled = false;
 			
-			// --- THIS IS THE FIX for the cursor ---
 			// Remove the duplicate userInput.focus() and keep only the reliable setTimeout version.
 			setTimeout(() => {
 				userInput.focus();
 			}, 0);
-			// --- END OF FIX ---
 		}
 	}
 	deleteFilesBtnTop.addEventListener('click', handleFileDeletion);
