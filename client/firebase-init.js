@@ -12,8 +12,7 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase and create global variables
-let auth;
-let db;
+let auth, db, storage, functions;
 
 try {
   firebase.initializeApp(firebaseConfig);
@@ -21,6 +20,7 @@ try {
   auth = firebase.auth();
   db = firebase.firestore();
   storage = firebase.storage();
+  functions = firebase.functions();
 } catch (e) {
   console.error("CRITICAL: Firebase initialization failed.", e);
   alert("FATAL ERROR: Could not connect to Firebase. See console for details.");
